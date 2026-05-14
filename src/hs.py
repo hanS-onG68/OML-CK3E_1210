@@ -13,7 +13,7 @@ def get_ttry_devices():
         print(f"Error: {e}")
 
 
-def test(csv_file):
+def test1(csv_file):
     # 示例数据：AD显示实验中可能采集的数据
     data = {
         '电压(V)': [1.1, 2.2, 3.1, 4.0, 5.2, 6.0, 7.1, 8.0],
@@ -34,5 +34,7 @@ def test(csv_file):
     spearman_corr = df['Steps'].corr(df['Force_Value'], method='spearman')
     print(f"斯皮尔曼相关系数: {spearman_corr:.4f}")
 
+
+
 if __name__ == "__main__":
-    test("data_20260510_220337.csv")
+    test1("data_20260510_220337.csv")
