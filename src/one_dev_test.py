@@ -12,6 +12,7 @@ import signal
 import aiofiles
 from dataclasses import dataclass
 from bidict import bidict
+import pathlib
 
 logger = setup_logger()
 
@@ -25,6 +26,7 @@ sensor2motor= bidict({
     6: 6,  # 7号通道sensor6对应电机6
     7: 7,  # 8号通道sensor7对应电机7
 })
+
 
 class OneDevTest:
     __slots__ = ('val0', 'val1', 'val2', 'val3', 'val4', 'val5', 'val6', 'val7')  # 声明固定属性, 加速属性访问
@@ -116,7 +118,7 @@ class OneDevTest:
 
     async def one_motor_test(self, sensor_id: int, val: Optional[float] = None, stop_event: asyncio.Event = None, task: asyncio.Task = None):
         data_pairs = []
-        motor_id = sensor2motor[sensor_id]  # 获取对应的电机ID
+        motor_id = sensor2motor[sensor_id]  # 根据传感器id, 获取对应的电机ID
         try:
             async with PMAC_Controller() as pmac:
                 if not pmac.is_connected:
@@ -183,18 +185,23 @@ class OneDevTest:
 
             tasks = [sensor_task, safety_task0, safety_task1, safety_task2, safety_task3, safety_task4, safety_task5, safety_task6, safety_task7]
 
-            motor0_task = asyncio.create_task(self.one_motor_test(sensor_id=0, val=self.val0, stop_event=self._stop_event0, task=safety_task0))
-            motor1_task = asyncio.create_task(self.one_motor_test(sensor_id=1, val=self.val1, stop_event=self._stop_event1, task=safety_task1))
-            motor2_task = asyncio.create_task(self.one_motor_test(sensor_id=2, val=self.val2, stop_event=self._stop_event2, task=safety_task2))
-            motor3_task = asyncio.create_task(self.one_motor_test(sensor_id=3, val=self.val3, stop_event=self._stop_event3, task=safety_task3))
-            motor4_task = asyncio.create_task(self.one_motor_test(sensor_id=4, val=self.val4, stop_event=self._stop_event4, task=safety_task4))
-            motor5_task = asyncio.create_task(self.one_motor_test(sensor_id=5, val=self.val5, stop_event=self._stop_event5, task=safety_task5))
-            motor6_task = asyncio.create_task(self.one_motor_test(sensor_id=6, val=self.val6, stop_event=self._stop_event6, task=safety_task6))
-            motor7_task = asyncio.create_task(self.one_motor_test(sensor_id=7, val=self.val7, stop_event=self._stop_event7, task=safety_task7))
+            sensor0_task = asyncio.create_task(self.one_motor_test(sensor_id=0, val=self.val0, stop_event=self._stop_event0, task=safety_task0))
+            sensor1_task = asyncio.create_task(self.one_motor_test(sensor_id=1, val=self.val1, stop_event=self._stop_event1, task=safety_task1))
+            sensor2_task = asyncio.create_task(self.one_motor_test(sensor_id=2, val=self.val2, stop_event=self._stop_event2, task=safety_task2))
+            sensor3_task = asyncio.create_task(self.one_motor_test(sensor_id=3, val=self.val3, stop_event=self._stop_event3, task=safety_task3))
+            sensor4_task = asyncio.create_task(self.one_motor_test(sensor_id=4, val=self.val4, stop_event=self._stop_event4, task=safety_task4))
+            sensor5_task = asyncio.create_task(self.one_motor_test(sensor_id=5, val=self.val5, stop_event=self._stop_event5, task=safety_task5))
+            sensor6_task = asyncio.create_task(self.one_motor_test(sensor_id=6, val=self.val6, stop_event=self._stop_event6, task=safety_task6))
+            sensor7_task = asyncio.create_task(self.one_motor_test(sensor_id=7, val=self.val7, stop_event=self._stop_event7, task=safety_task7))
 
-            motor_tasks = [motor0_task, motor1_task, motor2_task, motor3_task, motor4_task, motor5_task, motor6_task, motor7_task]
+            sensor_tasks = [sensor0_task, sensor1_task, sensor2_task, sensor3_task, sensor4_task, sensor5_task, sensor6_task, sensor7_task]
 
-            result = await asyncio.gather(*motor_tasks, return_exceptions=True)
+            result = await asyncio.gather(*sensor_tasks, return_exceptions=True)
+            for i, res in enumerate(result):
+                if isinstance(res, Exception):
+                    logger.error(f"Sensor {i} test error: {res}")
+                else:
+                    logger.info(f"sensor{i} test completed successfully.")
 
         except Exception as e:
             logger.error(f"{e}")
@@ -214,8 +221,34 @@ class OneDevTest:
 
 
 if __name__ == "__main__":
+    ###### 获取ttryXX 设备列表 ######
+    def get_ttry_devices():
+        ttyr_list = []
+        try:
+            path = pathlib.Path("/dev/").iterdir()
+            ttyr_list = sorted([f"{device}" for device in path if device.name.startswith("ttyr")])
+            print(f"Found {len(ttyr_list)} ttyr devices:")
+            print(*[item for item in ttyr_list], sep=", ")
+            return ttyr_list
+        except Exception as e:
+            print(f"Error: {e}")
+            return []
+    
+    async def devs_test(dev_list):
+        tasks= []
+        for dev in dev_list:
+            test = asyncio.create_task(OneDevTest(dev_path=dev))
+            tasks.append(test)
+        await asyncio.gather(*tasks, return_exceptions=True)
+        
     try:
-        asyncio.run(OneDevTest(dev_path="/dev/ttyr00").main())
+        dev_list = get_ttry_devices()
+        if not dev_list:
+            logger.error("❌ 没有找到任何ttyr设备，程序退出")
+        else:
+            logger.info(f"✅ 找到ttyr设备: {[dev for dev in dev_list]}")
+            
+            # asyncio.run(devs_test(dev_list))
     except KeyboardInterrupt:
         logger.error("程序出现异常，正在退出...")
         pass

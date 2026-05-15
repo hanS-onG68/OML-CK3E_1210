@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from scipy.stats import pearsonr, spearmanr, linregress
-from loger import setup_logger
+from logger import setup_logger
 
 logger = setup_logger()
 

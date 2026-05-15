@@ -27,11 +27,20 @@ motor2sensor= bidict({
 })
 
 class OneMotorTest:
-    def __init__(self, motor_id: int, stop_event: asyncio.Event):
-        self._stop_event = stop_event
+    def __init__(self, motor_id: int, dev_path: str = "/dev/ttyr02"):
+        self._stop_event = asyncio.Event()
         self.motor_id = motor_id
-        self.sensor_id = motor2sensor[motor_id]  # 获取对应的传感器通道
+        # self.sensor_id = motor2sensor[motor_id]  # 获取对应的传感器通道
         self.data_pairs = []                     # 存储步数和力值的列表
+        self.dev_path = dev_path
+        self.val0: Optional[float] = None    # 对应物理放大器的1号通道
+        self.val1: Optional[float] = None    # 对应物理放大器的2号通道
+        self.val2: Optional[float] = None    # 对应物理放大器的3号通道
+        self.val3: Optional[float] = None    # 对应物理放大器的4号通道
+        self.val4: Optional[float] = None    # 对应物理放大器的5号通道
+        self.val5: Optional[float] = None    # 对应物理放大器的6号通道
+        self.val6: Optional[float] = None    # 对应物理放大器的7号通道
+        self.val7: Optional[float] = None    # 对应物理放大器的8号通道
 
     async def async_input(self, prompt: str) -> str:
         """异步输入函数"""
@@ -55,9 +64,37 @@ class OneMotorTest:
             logger.error("❌ 没有数据需要保存")
         return self.data_pairs
 
+    async def get_sensor_data(self):
+        def format_val(val: Optional[float]) -> str:
+            return f"{val:.3f}" if val is not None else "None"
+        
+        sensor = SensorReader(self.dev_path, 3, 1.0)
+        while not self._stop_event.is_set():
+            try:
+                res = sensor.read_data()
+                timestamp = res[1].strftime("%Y-%m-%dT%H:%M:%S.%f")
+                sensor_values = res[2]
+
+                self.val0, self.val1, self.val2, self.val3, self.val4, self.val5, self.val6, self.val7 = sensor_values[:8]
+                formatted_vals = ", ".join(f"val{i}={format_val(v)}" for i, v in enumerate([self.val0, self.val1, self.val2, self.val3, self.val4, self.val5, self.val6, self.val7]))
+                
+                async with aiofiles.open("sensor_log.txt", "a") as log_file:
+                    await log_file.write(f"[{timestamp[:-5]}]: {formatted_vals}\n")
+                await asyncio.sleep(1)
+            except Exception as e:
+                logger.error(f"Sensor reading error: {e}")
+
+    async def safety_monitor(self, val: Optional[float]):
+        """安全监控任务"""
+        while not self._stop_event.is_set():
+            await asyncio.sleep(0.1)
+            if val is not None and (val > 80.0 or val < -80.0):
+                logger.warning("⚠️  val out of bounds! Stopping system.")
+                self._stop_event.set()  # 设置停止信号
+                break
+    
     def signal_handler(self, loop):
         logger.info("\n接收到关闭信号，正在退出...")
-
         self._stop_event.set()  # 设置停止信号
         # 取消所有任务
         for task in asyncio.all_tasks():
@@ -65,7 +102,11 @@ class OneMotorTest:
         loop.call_later(0.1, loop.stop)
         loop.close()
     
-    async def main(self, val: Optional[float] = None):
+    async def main(self):
+        sensor_task = None
+        safety_task = None
+
+        val = self.val0  # 监控哪个通道的值
 
         # 设置信号处理
         loop = asyncio.get_running_loop()
@@ -78,6 +119,9 @@ class OneMotorTest:
                     await pmac.connect()
                 try:
                     await pmac.exec_command(f"#{self.motor_id}J/")  # 使能电机
+
+                    sensor_task = asyncio.create_task(self.get_sensor_data())
+                    safety_task = asyncio.create_task(self.safety_monitor(val))
 
                     while not self._stop_event.is_set():
                         step = await self.async_input("请输入步数: ")
