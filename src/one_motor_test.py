@@ -27,10 +27,9 @@ motor2sensor= bidict({
 })
 
 class OneMotorTest:
-    def __init__(self, motor_id: int, dev_path: str = "/dev/ttyr02"):
+    def __init__(self, motor_id: int, dev_path: str):
         self._stop_event = asyncio.Event()
         self.motor_id = motor_id
-        # self.sensor_id = motor2sensor[motor_id]  # 获取对应的传感器通道
         self.data_pairs = []                     # 存储步数和力值的列表
         self.dev_path = dev_path
         self.val0: Optional[float] = None    # 对应物理放大器的1号通道
@@ -48,7 +47,7 @@ class OneMotorTest:
 
     async def save_to_csv(self):
         if self.data_pairs:
-            filename = f"/data/{self.motor_id}_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            filename = f"/data/{self.dev_path}_{self.motor_id}_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
 
             with open(filename, 'w', newline='', encoding='utf-8') as file:
                 writer = csv.writer(file)
@@ -76,7 +75,7 @@ class OneMotorTest:
                 sensor_values = res[2]
 
                 self.val0, self.val1, self.val2, self.val3, self.val4, self.val5, self.val6, self.val7 = sensor_values[:8]
-                formatted_vals = ", ".join(f"val{i}={format_val(v)}" for i, v in enumerate([self.val0, self.val1, self.val2, self.val3, self.val4, self.val5, self.val6, self.val7]))
+                formatted_vals = ", ".join(f"self.val0{i}={format_val(v)}" for i, v in enumerate([self.val0, self.val1, self.val2, self.val3, self.val4, self.val5, self.val6, self.val7]))
                 
                 async with aiofiles.open("sensor_log.txt", "a") as log_file:
                     await log_file.write(f"[{timestamp[:-5]}]: {formatted_vals}\n")
@@ -84,12 +83,12 @@ class OneMotorTest:
             except Exception as e:
                 logger.error(f"Sensor reading error: {e}")
 
-    async def safety_monitor(self, val: Optional[float]):
+    async def safety_monitor(self):
         """安全监控任务"""
         while not self._stop_event.is_set():
             await asyncio.sleep(0.1)
-            if val is not None and (val > 80.0 or val < -80.0):
-                logger.warning("⚠️  val out of bounds! Stopping system.")
+            if self.val0 is not None and (self.val0 > 80.0 or self.val0 < -80.0):
+                logger.warning("⚠️  self.val0 out of bounds! Stopping system.")
                 self._stop_event.set()  # 设置停止信号
                 break
     
@@ -106,8 +105,6 @@ class OneMotorTest:
         sensor_task = None
         safety_task = None
 
-        val = self.val0  # 监控哪个通道的值
-
         # 设置信号处理
         loop = asyncio.get_running_loop()
         for sig in [signal.SIGINT, signal.SIGTERM]:  # Ctrl+C 和 kill 信号
@@ -121,7 +118,7 @@ class OneMotorTest:
                     await pmac.exec_command(f"#{self.motor_id}J/")  # 使能电机
 
                     sensor_task = asyncio.create_task(self.get_sensor_data())
-                    safety_task = asyncio.create_task(self.safety_monitor(val))
+                    safety_task = asyncio.create_task(self.safety_monitor())
 
                     while not self._stop_event.is_set():
                         step = await self.async_input("请输入步数: ")
@@ -133,9 +130,9 @@ class OneMotorTest:
                             if self._stop_event.is_set():
                                 logger.info("🛑 安全监控触发，提前终止等待")
                                 break
-                            if val is not None:
-                                self.data_pairs.append((step, val))
-                                logger.info(f"✅ 记录: 步数={step}, 力值={val:.3f}")
+                            if self.val0 is not None:
+                                self.data_pairs.append((step, self.val0))
+                                logger.info(f"✅ 记录: 步数={step}, 力值={self.val0:.3f}")
                             else:
                                 logger.warning("⚠️ 传感器数据为空")
                         except Exception as e:
@@ -169,7 +166,7 @@ class OneMotorTest:
 
 if __name__ == "__main__":
     try:
-        asyncio.run(OneMotorTest(motor_id=2).main())
+        asyncio.run(OneMotorTest(motor_id=2, dev_path="/dev/ttyr02").main())
     except KeyboardInterrupt:
         logger.error("程序出现异常，正在退出...")
 

@@ -49,6 +49,9 @@ class OneDevTest:
         self.val5: Optional[float] = None    # 对应物理放大器的6号通道
         self.val6: Optional[float] = None    # 对应物理放大器的7号通道
         self.val7: Optional[float] = None    # 对应物理放大器的8号通道
+        self.value_getters = [               # 调用 self.value_getters[i]() 会返回 self.val{i} 的当前值
+            lambda i=i: getattr(self, f'val{i}') for i in range(8)
+        ]
 
     async def get_sensor_data(self):
         def format_val(val: Optional[float]) -> str:
@@ -70,10 +73,11 @@ class OneDevTest:
             except Exception as e:
                 logger.error(f"Sensor reading error: {e}")
 
-    async def safety_monitor(self, stop_event: asyncio.Event, val: Optional[float]):
+    async def safety_monitor(self, stop_event: asyncio.Event, sensor_id: int):
         """安全监控任务"""
         while not stop_event.is_set():
             await asyncio.sleep(0.1)
+            val = self.value_getters[sensor_id]()
             if val is not None and (val > 80.0 or val < -80.0):
                 logger.warning("⚠️  val out of bounds! Stopping system.")
                 stop_event.set()  # 设置停止信号
@@ -116,7 +120,7 @@ class OneDevTest:
         loop.close()
     
 
-    async def one_motor_test(self, sensor_id: int, val: Optional[float] = None, stop_event: asyncio.Event = None, task: asyncio.Task = None):
+    async def one_motor_test(self, sensor_id: int, stop_event: asyncio.Event = None, task: asyncio.Task = None):
         data_pairs = []
         motor_id = sensor2motor[sensor_id]  # 根据传感器id, 获取对应的电机ID
         try:
@@ -126,6 +130,7 @@ class OneDevTest:
                 try:
                     await pmac.exec_command(f"#{motor_id}J/")  # 使能电机
                     while not stop_event.is_set():
+                        val = self.value_getters[sensor_id]()  # 获取当前传感器值
                         step = await self.async_input("请输入步数: ")
                         if step.lower() == 'exit':
                             break
@@ -174,25 +179,25 @@ class OneDevTest:
         try:
             sensor_task = asyncio.create_task(self.get_sensor_data())
 
-            safety_task0 = asyncio.create_task(self.safety_monitor(self._stop_event0, self.val0))
-            safety_task1 = asyncio.create_task(self.safety_monitor(self._stop_event1, self.val1))
-            safety_task2 = asyncio.create_task(self.safety_monitor(self._stop_event2, self.val2))
-            safety_task3 = asyncio.create_task(self.safety_monitor(self._stop_event3, self.val3))
-            safety_task4 = asyncio.create_task(self.safety_monitor(self._stop_event4, self.val4))
-            safety_task5 = asyncio.create_task(self.safety_monitor(self._stop_event5, self.val5))
-            safety_task6 = asyncio.create_task(self.safety_monitor(self._stop_event6, self.val6))
-            safety_task7 = asyncio.create_task(self.safety_monitor(self._stop_event7, self.val7))
+            safety_task0 = asyncio.create_task(self.safety_monitor(self._stop_event0, sensor_id=0))
+            safety_task1 = asyncio.create_task(self.safety_monitor(self._stop_event1, sensor_id=1))
+            safety_task2 = asyncio.create_task(self.safety_monitor(self._stop_event2, sensor_id=2))
+            safety_task3 = asyncio.create_task(self.safety_monitor(self._stop_event3, sensor_id=3))
+            safety_task4 = asyncio.create_task(self.safety_monitor(self._stop_event4, sensor_id=4))
+            safety_task5 = asyncio.create_task(self.safety_monitor(self._stop_event5, sensor_id=5))
+            safety_task6 = asyncio.create_task(self.safety_monitor(self._stop_event6, sensor_id=6))
+            safety_task7 = asyncio.create_task(self.safety_monitor(self._stop_event7, sensor_id=7))
 
             tasks = [sensor_task, safety_task0, safety_task1, safety_task2, safety_task3, safety_task4, safety_task5, safety_task6, safety_task7]
 
-            sensor0_task = asyncio.create_task(self.one_motor_test(sensor_id=0, val=self.val0, stop_event=self._stop_event0, task=safety_task0))
-            sensor1_task = asyncio.create_task(self.one_motor_test(sensor_id=1, val=self.val1, stop_event=self._stop_event1, task=safety_task1))
-            sensor2_task = asyncio.create_task(self.one_motor_test(sensor_id=2, val=self.val2, stop_event=self._stop_event2, task=safety_task2))
-            sensor3_task = asyncio.create_task(self.one_motor_test(sensor_id=3, val=self.val3, stop_event=self._stop_event3, task=safety_task3))
-            sensor4_task = asyncio.create_task(self.one_motor_test(sensor_id=4, val=self.val4, stop_event=self._stop_event4, task=safety_task4))
-            sensor5_task = asyncio.create_task(self.one_motor_test(sensor_id=5, val=self.val5, stop_event=self._stop_event5, task=safety_task5))
-            sensor6_task = asyncio.create_task(self.one_motor_test(sensor_id=6, val=self.val6, stop_event=self._stop_event6, task=safety_task6))
-            sensor7_task = asyncio.create_task(self.one_motor_test(sensor_id=7, val=self.val7, stop_event=self._stop_event7, task=safety_task7))
+            sensor0_task = asyncio.create_task(self.one_motor_test(sensor_id=0, stop_event=self._stop_event0, task=safety_task0))
+            sensor1_task = asyncio.create_task(self.one_motor_test(sensor_id=1, stop_event=self._stop_event1, task=safety_task1))
+            sensor2_task = asyncio.create_task(self.one_motor_test(sensor_id=2, stop_event=self._stop_event2, task=safety_task2))
+            sensor3_task = asyncio.create_task(self.one_motor_test(sensor_id=3, stop_event=self._stop_event3, task=safety_task3))
+            sensor4_task = asyncio.create_task(self.one_motor_test(sensor_id=4, stop_event=self._stop_event4, task=safety_task4))
+            sensor5_task = asyncio.create_task(self.one_motor_test(sensor_id=5, stop_event=self._stop_event5, task=safety_task5))
+            sensor6_task = asyncio.create_task(self.one_motor_test(sensor_id=6, stop_event=self._stop_event6, task=safety_task6))
+            sensor7_task = asyncio.create_task(self.one_motor_test(sensor_id=7, stop_event=self._stop_event7, task=safety_task7))
 
             sensor_tasks = [sensor0_task, sensor1_task, sensor2_task, sensor3_task, sensor4_task, sensor5_task, sensor6_task, sensor7_task]
 
