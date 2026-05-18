@@ -32,22 +32,22 @@ class OneMotorTest:
         self.motor_id = motor_id
         self.data_pairs = []                     # 存储步数和力值的列表
         self.dev_path = dev_path
-        self.val0: Optional[float] = None    # 对应物理放大器的1号通道
-        self.val1: Optional[float] = None    # 对应物理放大器的2号通道
-        self.val2: Optional[float] = None    # 对应物理放大器的3号通道
-        self.val3: Optional[float] = None    # 对应物理放大器的4号通道
-        self.val4: Optional[float] = None    # 对应物理放大器的5号通道
-        self.val5: Optional[float] = None    # 对应物理放大器的6号通道
-        self.val6: Optional[float] = None    # 对应物理放大器的7号通道
-        self.val7: Optional[float] = None    # 对应物理放大器的8号通道
-
+        self.chan0_val: Optional[float] = None    # 对应物理放大器的1号通道
+        self.chan1_val: Optional[float] = None    # 对应物理放大器的2号通道
+        self.chan2_val: Optional[float] = None    # 对应物理放大器的3号通道
+        self.chan3_val: Optional[float] = None    # 对应物理放大器的4号通道
+        self.chan4_val: Optional[float] = None    # 对应物理放大器的5号通道
+        self.chan5_val: Optional[float] = None    # 对应物理放大器的6号通道
+        self.chan6_val: Optional[float] = None    # 对应物理放大器的7号通道
+        self.chan7_val: Optional[float] = None    # 对应物理放大器的8号通道
+    
     async def async_input(self, prompt: str) -> str:
         """异步输入函数"""
         return await asyncio.get_running_loop().run_in_executor(None, input, prompt)
 
     async def save_to_csv(self):
         if self.data_pairs:
-            filename = f"/data/{self.dev_path}_{self.motor_id}_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+            filename = f"data/{self.motor_id}_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
 
             with open(filename, 'w', newline='', encoding='utf-8') as file:
                 writer = csv.writer(file)
@@ -58,7 +58,7 @@ class OneMotorTest:
                     writer.writerow([i, first_data, second_data])
             logger.info(f"\n✅ 所有数据已保存到: {filename}")
             logger.info(f"📊 共保存 {len(self.data_pairs)} 行数据")
-            DataAnalyzer(filename).plot(x_col='Steps', y_col='Force_Value')
+            DataAnalyzer(filename).plot(y_col='Steps', x_col='Force_Value')
         else:
             logger.error("❌ 没有数据需要保存")
         return self.data_pairs
@@ -74,11 +74,20 @@ class OneMotorTest:
                 timestamp = res[1].strftime("%Y-%m-%dT%H:%M:%S.%f")
                 sensor_values = res[2]
 
-                self.val0, self.val1, self.val2, self.val3, self.val4, self.val5, self.val6, self.val7 = sensor_values[:8]
-                formatted_vals = ", ".join(f"self.val0{i}={format_val(v)}" for i, v in enumerate([self.val0, self.val1, self.val2, self.val3, self.val4, self.val5, self.val6, self.val7]))
-                
-                async with aiofiles.open("sensor_log.txt", "a") as log_file:
-                    await log_file.write(f"[{timestamp[:-5]}]: {formatted_vals}\n")
+                # self.chan0_val = sensor_values[0]
+                # self.chan1_val = sensor_values[1]
+                # self.chan2_val = sensor_values[2]
+                #  self.chan3_val = sensor_values[3]
+                # self.chan4_val = sensor_values[4]
+                # self.chan5_val = sensor_values[5]
+                # self.chan6_val = sensor_values[6]
+                self.chan7_val = sensor_values[7]
+                #val = [self.chan0_val, self.chan1_val, self.chan2_val, self.chan3_val, self.chan4_val, self.chan5_val, self.chan6_val, self.chan7_val]
+                # formatted_vals = ", ".join(f"self.chan{i}_val={format_val(v)}" for i, v in enumerate([self.chan3_val]))
+
+                # async with aiofiles.open("data/sensor_log.txt", "a") as log_file:
+                #     await log_file.write(f"[{timestamp[:-5]}]: {formatted_vals}\n")
+                print(f"[{timestamp[:-5]}]: chan7_val={self.chan7_val}\n")
                 await asyncio.sleep(1)
             except Exception as e:
                 logger.error(f"Sensor reading error: {e}")
@@ -87,8 +96,8 @@ class OneMotorTest:
         """安全监控任务"""
         while not self._stop_event.is_set():
             await asyncio.sleep(0.1)
-            if self.val0 is not None and (self.val0 > 80.0 or self.val0 < -80.0):
-                logger.warning("⚠️  self.val0 out of bounds! Stopping system.")
+            if self.chan7_val is not None and (self.chan7_val > 80.0 or self.chan7_val < -80.0):
+                logger.warning("⚠️  self.chan7_val out of bounds! Stopping system.")
                 self._stop_event.set()  # 设置停止信号
                 break
     
@@ -119,25 +128,25 @@ class OneMotorTest:
 
                     sensor_task = asyncio.create_task(self.get_sensor_data())
                     safety_task = asyncio.create_task(self.safety_monitor())
-
-                    while not self._stop_event.is_set():
-                        step = await self.async_input("请输入步数: ")
-                        if step.lower() == 'exit':
-                            break
-                        try:
-                            await pmac.exec_command(f"#{self.motor_id}J={step}")
-                            await asyncio.sleep(10)  # 等待数据稳定
-                            if self._stop_event.is_set():
-                                logger.info("🛑 安全监控触发，提前终止等待")
+                    for step in range(0, 40000, step=2500):
+                        while not self._stop_event.is_set():
+                            # step = input("请输入步数: ")
+                            # if step.lower() == 'exit':
+                            #     break
+                            try:
+                                await pmac.exec_command(f"#{self.motor_id}J={step}")
+                                await asyncio.sleep(10)  # 等待数据稳定
+                                if self._stop_event.is_set():
+                                    logger.info("🛑 安全监控触发，提前终止等待")
+                                    break
+                                if self.chan7_val is not None:
+                                    self.data_pairs.append((step, self.chan7_val))
+                                    logger.info(f"✅ 记录: 步数={step}, 力值={self.chan7_val:.3f}")
+                                else:
+                                    logger.warning("⚠️ 传感器数据为空")
+                            except Exception as e:
+                                logger.error(f"Error executing command: {e}")
                                 break
-                            if self.val0 is not None:
-                                self.data_pairs.append((step, self.val0))
-                                logger.info(f"✅ 记录: 步数={step}, 力值={self.val0:.3f}")
-                            else:
-                                logger.warning("⚠️ 传感器数据为空")
-                        except Exception as e:
-                            logger.error(f"Error executing command: {e}")
-                            break
                 except Exception as e:
                     logger.error(f"Error: {e}")
         except Exception as e:
@@ -158,15 +167,16 @@ class OneMotorTest:
                 async with PMAC_Controller() as pmac:
                     await pmac.connect()
                     await pmac.exec_command(f"#{self.motor_id}k")
+                    logger.info(f"电机_{self.motor_id} 已经完成去使能!")
             except:
                 logger.warning("⚠️ 电机停止失败")
 
-        await self.save_to_csv(self.data_pairs)
+        await self.save_to_csv()
 
 
 if __name__ == "__main__":
     try:
-        asyncio.run(OneMotorTest(motor_id=2, dev_path="/dev/ttyr02").main())
+        asyncio.run(OneMotorTest(motor_id=8, dev_path="/dev/ttyr01").main())
     except KeyboardInterrupt:
         logger.error("程序出现异常，正在退出...")
 

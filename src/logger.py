@@ -23,11 +23,11 @@ class ColoredFormatter(logging.Formatter):
 def setup_logger():
     # 创建日志记录器
     logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)  # 设置日志级别
+    logger.setLevel(logging.INFO)  # 设置日志级别
     
     # 创建控制台处理器
     console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG)  # 控制台处理器的日志级别
+    console_handler.setLevel(logging.INFO)  # 控制台处理器的日志级别
     
     # 创建格式化器（带时间戳和日志级别名称）
     formatter = ColoredFormatter(

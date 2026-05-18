@@ -63,7 +63,7 @@ class DataAnalyzer:
         logger.info(f"残差标准差: {residuals.std():.6f}")
         
         # 可视化
-        plt.figure(figsize=(12, 5))
+        plt.figure(figsize=(12, 6))
         
         plt.subplot(1, 2, 1)
         plt.scatter(x, y, alpha=0.6, label='Actual_Data')
@@ -85,7 +85,7 @@ class DataAnalyzer:
         plt.tight_layout()
 
         # 显示图表
-        plt.savefig(f'data/1.png', dpi=300, bbox_inches='tight') # 保存为PNG文件
+        plt.savefig(f'{self.csv_file}_2.png', dpi=300, bbox_inches='tight') # 保存为PNG文件
         # plt.show()
         
         return slope, intercept, residuals
@@ -133,17 +133,18 @@ class DataAnalyzer:
         plt.tight_layout()
         
         # 显示图表
-        plt.savefig(f'data/{self.csv_file}.png', dpi=300, bbox_inches='tight') # 保存为PNG文件
+        plt.savefig(f'{self.csv_file}_1.png', dpi=300, bbox_inches='tight') # 保存为PNG文件
 
         plt.close() # 释放内存
  
     def plot(self, x_col, y_col):
+        # self.plot_data_trend(x_col, y_col)
         if not self.is_linear_relationship(x_col, y_col):
             logger.error("❌ 数据不呈现线性关系，无法绘制趋势图")
             return False
         try:
-            self.plot_linear_relationship(x_col, y_col)
             self.plot_data_trend(x_col, y_col)
+            self.plot_linear_relationship(x_col, y_col)
         except Exception as e:
             logger.error(f"❌ 绘图过程中出现错误: {e}")
             return False
@@ -151,6 +152,6 @@ class DataAnalyzer:
 
 
 if __name__ == "__main__":
-    analyzer = DataAnalyzer("data/data_20260510_220337.csv")
-    analyzer.plot(x_col='Steps', y_col='Force_Value')
+    analyzer = DataAnalyzer("data/4_data_20260517_165503.csv")
+    analyzer.plot(y_col='Steps', x_col='Force_Value')
 

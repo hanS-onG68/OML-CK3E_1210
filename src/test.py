@@ -5,9 +5,37 @@ from typing import Optional
 from sensor import SensorReader
 from pmac_controller import PMAC_Controller
 import csv
-from plt_show import plot_trend_matplotlib
 import signal
 
 import curses
 
-from bidict import bidict
+async def main():
+    sensor = SensorReader("/dev/ttyr01", 3, 1.0)
+    def format_val(val: Optional[float]) -> str:
+        return f"{val:.3f}" if val is not None else "None"
+
+    async with PMAC_Controller() as pmac:
+        if not pmac.is_connected:
+            await pmac.connect()
+        await pmac.exec_command("#8J/")      # 使能电机1
+        # await pmac.exec_command(f"#4J=0")
+        while True:
+            res = sensor.read_data()
+            timestamp = res[1].strftime("%Y-%m-%dT%H:%M:%S.%f")
+            sensor_values = res[2]
+            chan1_val = sensor_values[0]
+            chan2_val = sensor_values[1]
+            chan3_val = sensor_values[2]
+            chan4_val = sensor_values[3]
+            chan5_val = sensor_values[4]
+            chan6_val = sensor_values[5]
+            chan7_val = sensor_values[6]
+            chan8_val = sensor_values[7]
+            print(f"[{timestamp[:-5]}]: chan1_val={chan1_val}, chan4_val={chan4_val}, chan5_val={chan5_val}, chan8_val={chan8_val}\n")
+            await asyncio.sleep(1.0)
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("程序出现异常，正在退出...")
