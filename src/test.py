@@ -17,8 +17,10 @@ async def main():
     async with PMAC_Controller() as pmac:
         if not pmac.is_connected:
             await pmac.connect()
-        await pmac.exec_command("#8J/")      # 使能电机1
-        # await pmac.exec_command(f"#4J=0")
+        
+        await pmac.exec_command("#1J/")      # 使能电机1
+
+        await pmac.exec_command(f"#4J=0")
         while True:
             res = sensor.read_data()
             timestamp = res[1].strftime("%Y-%m-%dT%H:%M:%S.%f")
@@ -35,7 +37,25 @@ async def main():
             await asyncio.sleep(1.0)
 
 if __name__ == "__main__":
+    async def disable_motors():
+        async with PMAC_Controller() as pmac:
+            if not pmac.is_connected:
+                await pmac.connect() 
+            await pmac.exec_command("#1k")      # 去使能电机1
+            await pmac.exec_command("#2k")      # 去使能电机2
+            await pmac.exec_command("#3k")      # 去使能电机3
+            await pmac.exec_command("#4k")      # 去使能电机4
+            await pmac.exec_command("#5k")      # 去使能电机5
+            await pmac.exec_command("#6k")      # 去使能电机6
+            await pmac.exec_command("#7k")      # 去使能电机7
+            await pmac.exec_command("#8k")      # 去使能电机8
+    
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        asyncio.run(main())
+        loop.run_until_complete(main())
     except KeyboardInterrupt:
         print("程序出现异常，正在退出...")
+    finally:
+        loop.run_until_complete(disable_motors())
+        loop.close()

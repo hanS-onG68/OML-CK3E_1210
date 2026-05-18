@@ -16,7 +16,7 @@ import pathlib
 
 logger = setup_logger()
 
-sensor2motor= bidict({
+dev1_sensor2motor= bidict({
     0: 0,  # 1号通道sensor0对应电机0
     1: 1,  # 2号通道sensor1对应电机1
     2: 2,  # 3号通道sensor2对应电机2
@@ -122,7 +122,7 @@ class OneDevTest:
 
     async def one_motor_test(self, sensor_id: int, stop_event: asyncio.Event = None, task: asyncio.Task = None):
         data_pairs = []
-        motor_id = sensor2motor[sensor_id]  # 根据传感器id, 获取对应的电机ID
+        motor_id = dev1_sensor2motor[sensor_id]  # 根据传感器id, 获取对应的电机ID
         try:
             async with PMAC_Controller() as pmac:
                 if not pmac.is_connected:

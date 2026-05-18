@@ -138,7 +138,6 @@ class DataAnalyzer:
         plt.close() # 释放内存
  
     def plot(self, x_col, y_col):
-        # self.plot_data_trend(x_col, y_col)
         if not self.is_linear_relationship(x_col, y_col):
             logger.error("❌ 数据不呈现线性关系，无法绘制趋势图")
             return False

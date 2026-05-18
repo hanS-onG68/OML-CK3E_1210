@@ -35,6 +35,22 @@ def test1(csv_file):
     print(f"斯皮尔曼相关系数: {spearman_corr:.4f}")
 
 
+def test2(start, stop, step):
+    for i in range(start, stop, step):
+        print(f"i = {i}")
+
+
+def test3(file):
+    import pandas as pd
+    df = pd.read_csv(file,  sep=',', comment='#')  # 读取CSV文件，忽略注释行
+    print(df)
+    print(f"motor_id = {df[(df['dev_id'] == 0) & (df['sensor_id'] == 1)]['motor_id'].values[0]}")  # 获取dev_id=0且sensor_id=7对应的motor_id
+
+    dev_path="/dev/ttyr01"
+    n = int(dev_path[-2:])
+    print(f"n = {n}")
+
+
 
 if __name__ == "__main__":
-    test1("data_20260510_220337.csv")
+    test3("dev2sensor2motor.csv")
