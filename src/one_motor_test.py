@@ -103,7 +103,7 @@ class OneMotorTest:
         loop.call_later(0.1, loop.stop)
         loop.close()
     
-    async def main(self, motor_start, motor_stop, motor_step):
+    async def run_test(self, motor_start, motor_stop, motor_step):
         sensor_task = None
         safety_task = None
         pmac: Optional[PMAC_Controller] = None
@@ -181,7 +181,7 @@ if __name__ == "__main__":
                 dev_id=int(dev_path[-2:]), 
                 channel_id=8, 
                 sensor=sensor
-            ).main(
+            ).run_test(
                 motor_start=0, 
                 motor_stop=100, 
                 motor_step=10
