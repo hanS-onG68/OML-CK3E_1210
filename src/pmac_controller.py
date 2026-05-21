@@ -39,6 +39,14 @@ class PMAC_Controller:
         self.logger.setLevel(logging.DEBUG)
         self.logger.info(f"PMAC_Controller is starting up ...")
 
+    # def __init__(self):
+    #     self.conn =  self.writer = self.stdout = self.stderr = None
+    #     self._cmdLock = asyncio.Lock()                      # 命令串行化
+    #     # self.ssh_config = ssh_config
+    #     self.logger = logging.getLogger("PMAC")
+    #     self.logger.setLevel(logging.DEBUG)
+    #     self.logger.info(f"PMAC_Controller is starting up ...")
+
 
     @property
     def is_connected(self) -> bool:

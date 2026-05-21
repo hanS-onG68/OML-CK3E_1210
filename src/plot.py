@@ -3,6 +3,8 @@ import matplotlib
 # 强制校验后端，避免有人误改顺序导致GUI阻塞
 if matplotlib.get_backend().lower() != 'agg':
     matplotlib.use('Agg')
+matplotlib.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei']
+matplotlib.rcParams['axes.unicode_minus'] = False
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -35,9 +37,9 @@ class DataAnalyzer:
         self.file_basename = os.path.splitext(os.path.basename(self.csv_file))[0]
         self.df = None
         # 统计结果缓存
-        self.pearson_corr = None
+        self.pearson_r = None
         self.pearson_p = None
-        self.spearman_corr = None
+        self.spearman_r = None
         self.spearman_p = None
         self.slope = None
         self.intercept = None
@@ -90,21 +92,21 @@ class DataAnalyzer:
         if not self._validate_columns(x_col, y_col):
             return False
         try:
-            self.pearson_corr, self.pearson_p = pearsonr(self.df[x_col], self.df[y_col])
-            self.spearman_corr, self.spearman_p = spearmanr(self.df[x_col], self.df[y_col])
+            self.pearson_r, self.pearson_p = pearsonr(self.df[x_col], self.df[y_col])
+            self.spearman_r, self.spearman_p = spearmanr(self.df[x_col], self.df[y_col])
             
-            logger.info(f"皮尔逊相关系数: {self.pearson_corr:.4f} (p={self.pearson_p:.4f})")
-            logger.info(f"斯皮尔曼相关系数: {self.spearman_corr:.4f} (p={self.spearman_p:.4f})")
+            logger.info(f"皮尔逊相关系数: {self.pearson_r:.4f} (p={self.pearson_p:.4f})")
+            logger.info(f"斯皮尔曼相关系数: {self.spearman_r:.4f} (p={self.spearman_p:.4f})")
 
             # 相关性判断
             p_ok = self.pearson_p < CONFIG["corr_p_threshold"] and self.spearman_p < CONFIG["corr_p_threshold"]
-            r_ok = abs(self.pearson_corr) > CONFIG["corr_r_threshold"] and abs(self.spearman_corr) > CONFIG["corr_r_threshold"]
+            r_ok = abs(self.pearson_r) > CONFIG["corr_r_threshold"] and abs(self.spearman_r) > CONFIG["corr_r_threshold"]
             
             if p_ok and r_ok:
                 logger.info("✅ 相关性显著且强线性相关")
                 return True
             elif p_ok:
-                logger.warning(f"⚠️ 相关性显著但线性程度一般（r={abs(self.pearson_corr):.4f} < 阈值{CONFIG['corr_r_threshold']}）")
+                logger.warning(f"⚠️ 相关性显著但线性程度一般（r={abs(self.pearson_r):.4f} < 阈值{CONFIG['corr_r_threshold']}）")
             else:
                 logger.warning("⚠️ 相关性不显著，结果仅作趋势参考")
             return False
@@ -119,18 +121,17 @@ class DataAnalyzer:
         try:
             x = self.df[x_col]
             y = self.df[y_col]
-            slope, intercept, r_value, p_value, std_err = linregress(x, y)
+            slope, intercept, r_value, p_value, std_err = linregress(x, y)  # 斜率，截距，皮尔逊系数的r值，皮尔逊系数的P值，截距的标准误差
             self.slope = slope           # 斜率
             self.intercept = intercept   # 截距
-            self.r2 = r_value ** 2       # 残差**2
+            self.r2 = r_value ** 2       # 拟合优度
 
-            logger.info("🔍 线性关系分析结果")
+            logger.info("🔍 线性关系分析结果:")
             logger.info("=" * 40)
             logger.info(f"回归方程: y = {slope:.6f}x + {intercept:.6f}")
-            logger.info(f"相关系数 R: {r_value:.6f}")
-            logger.info(f"确定系数 R²: {self.r2:.6f}")
+            logger.info(f"相关系数 : r = {r_value:.6f}, p = {p_value:.6f}")
+            logger.info(f"拟合优度 R²: {self.r2:.6f}")
             logger.info(f"斜率标准差: {std_err:.6f}")
-            logger.info(f"P值: {p_value:.6f}")
             
             y_pred = slope * x + intercept
             residuals = y - y_pred
@@ -138,30 +139,41 @@ class DataAnalyzer:
 
             # 绘图逻辑
             plot_num = 2 if CONFIG["show_residual_plot"] else 1
-            plt.figure(figsize=(6*plot_num, 6))
+            fig, axs = plt.subplots(1, plot_num, figsize=(6*plot_num, 6), constrained_layout=True)
+            axs = np.atleast_1d(axs) # 兼容plot_num=1的情况
+            # plt.figure(figsize=(6*plot_num, 6), constrained_layout=True)
 
             # 拟合图
-            plt.subplot(1, plot_num, 1)
-            plt.scatter(x, y, alpha=0.6, label='实测数据')
-            plt.plot(x, y_pred, color='red', linewidth=2, label=f'拟合线: y={slope:.4f}x+{intercept:.4f}\nR²={self.r2:.4f}')
-            plt.xlabel(x_col, fontsize=12)
-            plt.ylabel(y_col, fontsize=12)
-            plt.legend()
-            plt.title('线性回归拟合', fontweight='bold')
-            plt.grid(True, alpha=0.3)
+            # 统计信息注释
+            stats_text = (
+                f"Pearson:  r={self.pearson_r:.4f}, p={self.pearson_p:.4f}\n"
+                f"Spearman: r={self.spearman_r:.4f}, p={self.spearman_p:.4f}"
+            )
+            ax = axs[0]
+            # ax.subplot(1, plot_num, 1)
+            # ax.scatter(x, y, alpha=0.6, label='Measured data') # 实测数据
+            ax.scatter(x, y, alpha=0.6, label='实测数据')
+            ax.plot(x, y_pred, color='red', linewidth=2, label=f'拟合线: y={slope:.4f}x+{intercept:.4f}\n拟合优度: R²={self.r2:.4f}\n{stats_text}')
+            # ax.plot(x, y_pred, color='red', linewidth=2, label=f'y={slope:.4f}x+{intercept:.4f}\nR²={self.r2:.4f}\n{stats_text}')
+            ax.set_xlabel(x_col, fontsize=12)
+            ax.set_ylabel(y_col, fontsize=12)
+            ax.legend(fontsize=8)
+            ax.set_title('线性回归拟合', fontweight='bold')
+            ax.grid(True, alpha=0.3)
 
             # 残差图（可选）
             fit_img_path = ""
             if CONFIG["show_residual_plot"]:
-                plt.subplot(1, 2, 2)
-                plt.scatter(y_pred, residuals, alpha=0.6)
-                plt.axhline(y=0, color='red', linestyle='--')
-                plt.xlabel('预测值', fontsize=12)
-                plt.ylabel('残差', fontsize=12)
-                plt.title('残差分布', fontweight='bold')
-                plt.grid(True, alpha=0.3)
+                ax = axs[1]
+                # ax.subplot(1, 2, 2)
+                ax.scatter(y_pred, residuals, alpha=0.6)
+                ax.axhline(y=0, color='red', linestyle='--')
+                ax.set_xlabel('预测值', fontsize=12)
+                ax.set_ylabel('残差', fontsize=12)
+                ax.set_title('残差分布', fontweight='bold')
+                ax.grid(True, alpha=0.3)
             
-            plt.tight_layout()
+            # plt.tight_layout()
             # 自动创建目录
             fit_img_path = os.path.join(self.file_dir, f"{self.file_basename}_拟合图.{CONFIG['fig_format']}")
             if CONFIG["auto_create_dir"]:
@@ -180,7 +192,7 @@ class DataAnalyzer:
             return ""
         try:
             logger.info(f"📊 正在绘制趋势图，有效数据量: {len(self.df)}行")
-            plt.figure(figsize=(12, 6))
+            plt.figure(figsize=(12, 8), constrained_layout=True)
 
             plt.plot(self.df[x_col], self.df[y_col], 
                     marker='o', linestyle='-', linewidth=2, markersize=6,
@@ -188,8 +200,8 @@ class DataAnalyzer:
 
             # 统计信息注释
             stats_text = (
-                f"皮尔逊相关系数: r={self.pearson_corr:.4f}, p={self.pearson_p:.4f}\n"
-                f"斯皮尔曼相关系数: r={self.spearman_corr:.4f}, p={self.spearman_p:.4f}\n"
+                f"皮尔逊相关系数: r={self.pearson_r:.4f}, p={self.pearson_p:.4f}\n"
+                f"斯皮尔曼相关系数: r={self.spearman_r:.4f}, p={self.spearman_p:.4f}\n"
             )
             if self.r2 is not None:
                 stats_text += f"线性拟合R²: {self.r2:.4f}"
@@ -202,8 +214,8 @@ class DataAnalyzer:
             plt.xlabel(x_col, fontsize=12)
             plt.ylabel(y_col, fontsize=12)
             plt.grid(True, alpha=0.3, linestyle='--')
-            plt.legend()
-            plt.tight_layout()
+            plt.legend(fontsize=8)
+            # plt.tight_layout()
 
             trend_img_path = os.path.join(self.file_dir, f"{self.file_basename}_趋势图.{CONFIG['fig_format']}")
             if CONFIG["auto_create_dir"]:
@@ -222,7 +234,7 @@ class DataAnalyzer:
             "success": False,
             "trend_img": "",
             "fit_img": "",
-            "pearson_corr": self.pearson_corr,
+            "pearson_r": self.pearson_r,
             "pearson_p": self.pearson_p,
             "slope": self.slope,
             "intercept": self.intercept,
@@ -234,17 +246,20 @@ class DataAnalyzer:
                 return result
 
             # 先做相关性分析，不管结果如何都继续绘图
-            self.is_linear_relationship(x_col, y_col)
+            if not self.is_linear_relationship(x_col, y_col):
+                logger.warning("❌ 数据线性不相关，不再继续绘图")
+                return
 
             # 绘制趋势图
-            result["trend_img"] = self.plot_data_trend(x_col, y_col)
+            # +
+            # result["trend_img"] = self.plot_data_trend(x_col, y_col)
             # 绘制拟合图
             self.slope, self.intercept, _, result["fit_img"] = self.plot_linear_relationship(x_col, y_col)
 
             # 回写统计结果
             result.update({
                 "success": True,
-                "pearson_corr": self.pearson_corr,
+                "pearson_r": self.pearson_r,
                 "pearson_p": self.pearson_p,
                 "slope": self.slope,
                 "intercept": self.intercept,

@@ -56,12 +56,11 @@ def test3(file):
 
 
 def test4():
-    from dataclasses import dataclass, asdict
-    from pmac_controller import SSH_Config
-    config2 = SSH_Config()
-    print(config2.host) # 输出：192.168.0.201
-    print(config2.port) # 输出：22（继承默认值）
-
+    import matplotlib
+    print(matplotlib.matplotlib_fname())
+    import os
+    i = os.cpu_count()
+    print(f"i= {i}")
 
 if __name__ == "__main__":
     test4()

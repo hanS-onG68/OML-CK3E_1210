@@ -13,16 +13,53 @@ import aiofiles
 from dataclasses import dataclass
 from bidict import bidict
 import pandas as pd
+from functools import partial
+import os
+import multiprocessing as mp
+
+from concurrent.futures import ProcessPoolExecutor
+
+# 自动计算进程池大小，优先用逻辑核的1/3，最小1个，最大不超过8（避免占满CPU影响实时控制）
+LOGIC_CPU_COUNT = os.cpu_count() or 4
+MAX_WORKERS = min(8, max(1, LOGIC_CPU_COUNT // 3))
+# Linux下强制用spawn启动模式，避免fork继承父进程全局状态导致串图
+mp_context = mp.get_context("spawn")
+
+# 子进程初始化：每个进程启动时自动配置matplotlib，避免重复设置
+def _worker_init():
+    import matplotlib
+    matplotlib.use("Agg")
+    matplotlib.rcParams['font.sans-serif'] = ['WenQuanYi Micro Hei']
+    matplotlib.rcParams['axes.unicode_minus'] = False
+
+# 全局进程池实例，整个程序复用
+GLOBAL_PLOT_POOL = ProcessPoolExecutor(
+    max_workers=MAX_WORKERS,
+    mp_context=mp_context,
+    initializer=_worker_init
+)
+
+# 👇 写到文件顶层，OneMotorTest类外面，全局可导入
+def run_plot_task(filepath: str, x_col: str, y_col: str) -> bool:
+    """独立绘图任务，进程池可序列化，内部处理异常"""
+    try:
+        # from plot import DataAnalyzer # 按需导入，避免循环引用
+        DataAnalyzer(filepath).plot(x_col, y_col)
+        return True
+    except Exception as e:
+        import logging
+        logging.warning(f"绘图失败 {filepath}: {str(e)}")
+        return False
+
 
 class OneMotorTest:
-    def __init__(self, amplifier_id: int, channel_id: int, sensor: SensorReader, pmac: Optional[PMAC_Controller] = None): 
+    def __init__(self, amplifier_id: int, channel_id: int, sensor: SensorReader, pmac: Optional[PMAC_Controller], df: Optional[pd.DataFrame]): 
         self.logger = setup_logger()
         try:
-            self.df = pd.read_csv("controler2amplifier2sensor2motor.csv", sep=',', comment='#')  # 读取CSV文件，忽略注释行
-            matched = self.df[(self.df['Channel_id'] == channel_id) & (self.df['Amplifier_id'] == amplifier_id)]
+            matched = df[(df['Channel_id'] == channel_id) & (df['Amplifier_id'] == amplifier_id)]
             if matched.empty:
                 raise ValueError(f"未找到匹配的放大器ID {amplifier_id} 和传感器通道 {channel_id} 的记录")
-            self.motor_id = matched['motor_id'].values[0]
+            self.motor_id = matched['Motor_id'].values[0]
             if self.motor_id == -1:
                 raise ValueError(f"匹配的放大器ID {amplifier_id} 和传感器通道 {channel_id} 的记录, 不正确！")
         except Exception as e:
@@ -54,7 +91,15 @@ class OneMotorTest:
             # 绘图逻辑如果是同步的，放在线程池里跑避免阻塞,替换原来的同步调用，绘图放到线程池执行
             loop = asyncio.get_running_loop()
             try:
-                await loop.run_in_executor(None, DataAnalyzer(filename).plot, 'Steps', 'Force_Value')
+                # 整个绘图逻辑（实例化+调用）都在进程池内执行，完全隔离，不会阻塞主线程
+                plot_task = partial(
+                    run_plot_task,
+                    filename,
+                    'Force_Value',
+                    'Steps'
+                )
+                # 如果不需要等待绘图完成，直接去掉await即可，主测试逻辑直接继续，进一步提升速度
+                await loop.run_in_executor(GLOBAL_PLOT_POOL, plot_task)
             except Exception as e:
                 self.logger.warning(f"⚠️ 绘图失败，不影响测试结果: {str(e)}")
         else:
@@ -74,7 +119,7 @@ class OneMotorTest:
                 self.channel_vals = sensor_values             # 更新通道值列表
                 self.val = sensor_values[self.sensor_id - 1]  # 获取对应电机的传感器通道值
 
-                self.logger(f"[{timestamp[:-5]}]: chan{self.sensor_id}_val={self.val}\n")
+                print(f"[{timestamp[:-5]}]: chan{self.sensor_id}_val={self.val}\n")
                 await asyncio.sleep(1)
             except Exception as e:
                 self.logger.error(f"Sensor reading error: {e}")
@@ -82,7 +127,7 @@ class OneMotorTest:
     async def safety_monitor(self):
         """安全监控任务"""
         while not self._stop_event.is_set():
-            if self.val is not None and (self.val > 80.0 or self.val < -80.0):
+            if self.val is not None and (self.val > 30.0 or self.val < -30.0):
                 self.logger.warning("⚠️  self.val out of bounds! Stopping system.")
                 self._stop_event.set()  # 设置停止信号
                 break

@@ -16,9 +16,10 @@ import pathlib
 from one_motor_test import OneMotorTest
 import pandas as pd
 import inspect
+from one_motor_test import GLOBAL_PLOT_POOL
 
 # 6个子镜对应6个pmac控制器
-config0 = SSH_Config(host = "192.168.0.200")
+config0 = SSH_Config()
 pmac_controler0 = PMAC_Controller(config0)
 
 config1 = SSH_Config(host = "192.168.0.201")
@@ -49,6 +50,11 @@ Id2Controler = {
 class MirrorsTest:
     def __init__(self):
        self.logger = setup_logger()
+       try:
+           self.df = pd.read_csv("controler2amplifier2sensor2motor.csv", sep=',', comment='#')
+       except Exception as e:
+           self.logger.error(f"read_csv error: {str(e)}")
+           return
        pass
     
     def get_ttry_devices(self):
@@ -56,21 +62,31 @@ class MirrorsTest:
         try:
             path = pathlib.Path("/dev/").iterdir()
             ttyr_list = sorted([f"{device}" for device in path if device.name.startswith("ttyr")])
-            self.logger(f"Found {len(ttyr_list)} ttyr devices:")
-            self.logger(*[item for item in ttyr_list], sep=", ")
+            self.logger.info(f"Found {len(ttyr_list)} ttyr devices:")
+            self.logger.info(*[item for item in ttyr_list])
             return ttyr_list
         except Exception as e:
-            self.logger(f"{inspect.currentframe().f_code.co_name} 出现异常，Error: {str(e)}")
+            self.logger.error(f"{inspect.currentframe().f_code.co_name} 出现异常，Error: {str(e)}")
             return []
     
     async def one_amplifier_test(self, amplifier):
-        sensor = SensorReader(path=amplifier, group_id=3, datarate=1.0)   # 一个放大器上的8个通道共用一个读取器
-        amplifier_id = int(amplifier[4:])
+        async def _wrap_motor_test(motor_test):    # 给单个电机任务包异常捕获，异常只影响自己
+            try:
+                await motor_test.run_test(
+                    motor_start=0, 
+                    motor_stop=100, 
+                    motor_step=20
+                )
+            except Exception as e:
+                self.logger.error(f"❌ 电机{motor_test.motor_id}测试失败: {str(e)}，已安全停转")
+    
+        loop = asyncio.get_running_loop()
+        sensor = await loop.run_in_executor(None, SensorReader, amplifier, 3, 1.0)
+        # sensor = SensorReader(path=amplifier, group_id=3, datarate=1.0)   # 一个放大器上的8个通道共用一个读取器
+        amplifier_id = int(amplifier[9:])
         pmac_controler = None
-
         try:
-            df = pd.read("controler2amplifier2sensor2motor.csv", sep=',', comment='#')
-            matched = df[(df['Amplifier_id'] == amplifier_id)]
+            matched = self.df[(self.df['Amplifier_id'] == amplifier_id)]
             if matched.empty:
                 self.logger.error(f"❌ 放大器{amplifier_id}未找到匹配记录，跳过当前放大器所有测试")
                 return # 仅跳过当前放大器，不影响其他放大器
@@ -85,19 +101,10 @@ class MirrorsTest:
                 tasks = []
                 if not pmac.is_connected:
                     await pmac.connect()
-                for channel_id in range(1, 3):
-                    motor = OneMotorTest(amplifier_id, channel_id, sensor, pmac)    # 测试传感器对应的电机
-                    
-                    async def _wrap_motor_test(motor_test):                         # 给单个电机任务包异常捕获，异常只影响自己
-                        try:
-                            await motor_test.run_test(
-                                motor_start=0, 
-                                motor_stop=100, 
-                                motor_step=20
-                            )
-                        except Exception as e:
-                            self.logger.error(f"❌ 电机{motor_test.motor_id}测试失败: {str(e)}，已安全停转")
-
+                for channel_id in range(1, 9):
+                    if self.df[(self.df['Amplifier_id'] == amplifier_id) & (self.df['Channel_id'] == channel_id)]['Motor_id'].values[0] == -1:  # 放大器通道未连接电机
+                        continue
+                    motor = OneMotorTest(amplifier_id, channel_id, sensor, pmac, self.df)    # 测试传感器对应的电机
                     task = asyncio.create_task(_wrap_motor_test(motor))
                     tasks.append(task)
                 await asyncio.gather(*tasks, return_exceptions=True)
@@ -106,6 +113,12 @@ class MirrorsTest:
             self.logger.error(f"❌ 放大器测试出现异常: {str(e)}")
 
     async def main(self):
+        async def _wrap_amp_test(amp):       # 给每个放大器任务也加一层异常隔离，单个放大器异常不影响其他
+            try:
+                await self.one_amplifier_test(amp)
+            except Exception as e:
+                self.logger.error(f"❌ 放大器{amp}测试异常: {str(e)}")
+        
         amplifier_list = self.get_ttry_devices()
         if not amplifier_list:
             self.logger.error("❌ 没有找到任何ttyr设备，程序退出")
@@ -114,13 +127,6 @@ class MirrorsTest:
             tasks = []
             self.logger.info(f"✅ 找到ttyr设备: {[amplifier for amplifier in amplifier_list]}")
             for amplifier in amplifier_list:         # 测试设备上的所有放大器
-                
-                async def _wrap_amp_test(amp):       # 给每个放大器任务也加一层异常隔离，单个放大器异常不影响其他
-                    try:
-                        await self.one_amplifier_test(amp)
-                    except Exception as e:
-                        self.logger.error(f"❌ 放大器{amp}测试异常: {str(e)}")
-                
                 task = asyncio.create_task(_wrap_amp_test(amplifier))
                 tasks.append(task)
             await asyncio.gather(*tasks, return_exceptions=True)
@@ -137,4 +143,6 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"程序出现异常，正在退出..., {e}")
         pass
+    finally:
+        GLOBAL_PLOT_POOL.shutdown()
 
