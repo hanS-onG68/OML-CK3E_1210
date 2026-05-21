@@ -4,13 +4,16 @@ import numpy as np
 
 ###### 获取ttryXXXX设备列表 ######
 def get_ttry_devices():
-     try:
-        path = pathlib.Path("/dev/").iterdir()
-        ttrys = sorted([device for device in path if device.name.startswith("ttyr")])
-        print(f"Found {len(ttrys)} ttyr devices:")
-        print(*[item.name for item in ttrys], sep=", ")
-     except Exception as e:
-        print(f"Error: {e}")
+        ttyr_list = []
+        try:
+            path = pathlib.Path("/dev/").iterdir()
+            ttyr_list = sorted([f"{device}" for device in path if device.name.startswith("ttyr")])
+            print(f"Found {len(ttyr_list)} ttyr devices:")
+            print(*[item for item in ttyr_list], sep=", ")
+            return ttyr_list
+        except Exception as e:
+            print(f"Error: {e}")
+            return []
 
 
 def test1(csv_file):
@@ -52,5 +55,13 @@ def test3(file):
 
 
 
+def test4():
+    from dataclasses import dataclass, asdict
+    from pmac_controller import SSH_Config
+    config2 = SSH_Config()
+    print(config2.host) # 输出：192.168.0.201
+    print(config2.port) # 输出：22（继承默认值）
+
+
 if __name__ == "__main__":
-    test3("dev2sensor2motor.csv")
+    test4()

@@ -1,3 +1,7 @@
+import matplotlib
+# 必须放在import matplotlib.pyplot之前，无桌面环境专用非交互式后端
+matplotlib.use('Agg')
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -87,6 +91,7 @@ class DataAnalyzer:
         # 显示图表
         plt.savefig(f'{self.csv_file}_2.png', dpi=300, bbox_inches='tight') # 保存为PNG文件
         # plt.show()
+        plt.close() # 释放内存
         
         return slope, intercept, residuals
 

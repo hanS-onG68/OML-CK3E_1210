@@ -2,6 +2,7 @@
 
 import asyncio, asyncssh, logging
 from dataclasses import dataclass, asdict
+from typing import Optional
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logging.getLogger("asyncssh").setLevel(logging.WARNING)
@@ -30,9 +31,10 @@ class PMAC_Controller:
     }   
 
 
-    def __init__(self):
+    def __init__(self, ssh_config: Optional[SSH_Config]):
         self.conn =  self.writer = self.stdout = self.stderr = None
         self._cmdLock = asyncio.Lock()                      # 命令串行化
+        self.ssh_config = ssh_config
         self.logger = logging.getLogger("PMAC")
         self.logger.setLevel(logging.DEBUG)
         self.logger.info(f"PMAC_Controller is starting up ...")
@@ -63,7 +65,7 @@ class PMAC_Controller:
             self.logger.info(f"Connecting to PMAC ...")
             # 1. 建立SSH连接
             self.conn = await asyncssh.connect(
-                    **asdict(SSH_Config()),
+                    **asdict(self.ssh_config),
                     options=asyncssh.SSHClientConnectionOptions(known_hosts=None),  # known_hosts=None 表示不验证服务器的主机密钥
             )
             try:

@@ -1,5 +1,8 @@
 import logging
 
+# 全局标记：保证日志只初始化一次，避免重复添加Handler
+_logger_initialized = False
+
 # ANSI颜色代码
 COLOR_CODES = {
     "DEBUG": "\033[94m",    # 蓝色
@@ -24,6 +27,15 @@ def setup_logger():
     # 创建日志记录器
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)  # 设置日志级别
+
+    # ✅ 新增逻辑1：已经初始化过直接返回，不重复加Handler
+    if _logger_initialized:
+        return logger
+
+    # ✅ 新增逻辑2：清空所有已有Handler，避免其他地方添加的Handler导致重复
+    if logger.hasHandlers():
+        logger.handlers.clear()
+    
     
     # 创建控制台处理器
     console_handler = logging.StreamHandler()
