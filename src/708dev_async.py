@@ -17,7 +17,6 @@ logger = setup_logger()
 
 
 class DomesticAmplifier:
-    """异步版称重设备Modbus TCP读取工具，遵循设备寄存器协议"""
     def __init__(self, host:str, port:int, timeout:float, retries:int, slave_id:int):
         self.client: Optional[AsyncModbusTcpClient] = None
         self.stop_event = asyncio.Event()  # 用于控制循环停止的事件对象
