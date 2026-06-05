@@ -6,7 +6,6 @@ from typing import Optional
 from sensor import SensorReader
 from pmac_controller import PMAC_Controller, SSH_Config
 import csv
-from plot_show import DataAnalyzer
 from logger import setup_logger
 import signal
 import aiofiles
@@ -17,6 +16,7 @@ from one_motor_test import OneMotorTest
 import pandas as pd
 import inspect
 from one_motor_test import GLOBAL_PLOT_POOL
+from plot import kp
 
 # 6个子镜对应6个pmac控制器
 config0 = SSH_Config()
@@ -145,4 +145,5 @@ if __name__ == "__main__":
         pass
     finally:
         GLOBAL_PLOT_POOL.shutdown()
+        print(f"kp = {kp}")
 

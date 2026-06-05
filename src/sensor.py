@@ -1,6 +1,6 @@
 import time, os
 from datetime import datetime
-from utils import Logger
+from logger import setup_logger
 
 from gsv86lib import gsv86
 
@@ -19,7 +19,7 @@ class SensorReader:
             logger(utils.Logger): 日志记录器
         """
         self.group_id = group_id
-        self.logger = logger
+        self.logger = setup_logger()
         self.datarate = datarate
 
         self.com = gsv86(path, baudrate=115200)

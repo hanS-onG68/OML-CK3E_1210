@@ -39,12 +39,11 @@ GLOBAL_PLOT_POOL = ProcessPoolExecutor(
     initializer=_worker_init
 )
 
-# 👇 写到文件顶层，OneMotorTest类外面，全局可导入
-def run_plot_task(filepath: str, x_col: str, y_col: str) -> bool:
+# 写到文件顶层，OneMotorTest类外面，全局可导入
+def run_plot_task(filepath: str, x_col: str, y_col: str, sensor_index: int) -> bool:
     """独立绘图任务，进程池可序列化，内部处理异常"""
     try:
-        # from plot import DataAnalyzer # 按需导入，避免循环引用
-        DataAnalyzer(filepath).plot(x_col, y_col)
+        DataAnalyzer(filepath).plot(x_col, y_col, sensor_index)
         return True
     except Exception as e:
         import logging
@@ -72,6 +71,7 @@ class OneMotorTest:
         self.channel_vals: List[Optional[float]] = [None] * 8  # 用列表存8个通道值，替代冗余变量
         self.val:Optional[float] = None                        # 当前测试电机对应的传感器通道的值
         self.pmac = pmac
+        self.sensor_index = amplifier_id * 8 + channel_id - 1
 
 
     async def save_to_csv(self):
@@ -96,9 +96,11 @@ class OneMotorTest:
                     run_plot_task,
                     filename,
                     'Force_Value',
-                    'Steps'
+                    'Steps',
+                    self.sensor_index
                 )
                 # 如果不需要等待绘图完成，直接去掉await即可，主测试逻辑直接继续，进一步提升速度
+                # with GLOBAL_PLOT_POOL as executor:
                 await loop.run_in_executor(GLOBAL_PLOT_POOL, plot_task)
             except Exception as e:
                 self.logger.warning(f"⚠️ 绘图失败，不影响测试结果: {str(e)}")
@@ -216,24 +218,3 @@ class OneMotorTest:
         # self.logger.info("🔚 测试任务全部结束，进程退出")
         # import os
         # os._exit(0)
-
-
-# if __name__ == "__main__":
-#     dev_path = "/dev/ttyr00"
-#     sensor = SensorReader(path=dev_path, group_id=3, datarate=1.0)
-#     try:
-#         asyncio.run(
-#             OneMotorTest(
-#                 dev_id=int(dev_path[-2:]), 
-#                 channel_id=1, 
-#                 sensor=sensor
-#             ).run_test(
-#                 motor_start=0, 
-#                 motor_stop=100, 
-#                 motor_step=10
-#             ) # 测试范围和步长
-#         )
-#     except KeyboardInterrupt:
-#         self.logger("[INFO] 用户手动终止程序")
-#     except Exception as e:
-#         self.logger(f"[FATAL] 程序启动失败: {str(e)}")

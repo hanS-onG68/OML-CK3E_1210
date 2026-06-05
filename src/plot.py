@@ -27,6 +27,9 @@ CONFIG = {
 }
 # -----------------------------------------------------------------------------
 
+
+kp = np.full(150, np.nan)
+
 class DataAnalyzer:
     """数据分析类，包含相关性分析和趋势图绘制
     适配工控电机测试场景，所有异常都内部捕获，不会向上抛出导致主程序崩溃
@@ -228,7 +231,7 @@ class DataAnalyzer:
             plt.close()
             return ""
 
-    def plot(self, x_col: str, y_col: str) -> dict:
+    def plot(self, x_col: str, y_col: str, sensor_index: int) -> dict:
         """对外主接口：绘制所有图表，返回所有生成的图片路径和统计结果，不会向上抛异常"""
         result = {
             "success": False,
@@ -265,7 +268,9 @@ class DataAnalyzer:
                 "intercept": self.intercept,
                 "r2": self.r2
             })
-            logger.info(f"✅ 绘图完成，趋势图: {result['trend_img']}, 拟合图: {result['fit_img']}")
+            logger.info(f"✅ 绘图完成, 拟合图: {result['fit_img']}")
+            kp[sensor_index] = self.slope
+            logger.info(f"记录sensor_index = {sensor_index}时, 矩阵kp = {kp}")
             return result
         except Exception as e:
             logger.error(f"❌ 绘图整体失败: {str(e)}")

@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logging.getLogger("asyncssh").setLevel(logging.WARNING)
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True) # frozen=True：不可修改
 class SSH_Config:
     host:str        = "192.168.0.200"
     port:int        = 22
