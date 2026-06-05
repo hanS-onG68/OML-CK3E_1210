@@ -65,13 +65,15 @@ class DomesticAmplifier:
         logger.info(f"通道{channel}测量值: {val:.4f}")
         results[f"channel_{channel}"] = val
 
+    # 上层调用接口，获取设备8个通道的测量值，返回字典形式
     async def read_channels_measure(self):
-        """异步读取指定通道测量值
-        :param channel: 目标通道号 (1~8)
-        :return: 成功返回测量值，失败返回None
+        """
+            功  能：异步读取所有通道测量值
+            参  数：无参
+            返回值: 成功返回测量值字典, 失败返回None
         """
         if not self.client or not self.client.connected:
-            logger.error("尚未连接设备，请先调用connect()")
+            logger.error("尚未连接设备, 请先调用connect()")
             return None
 
         start_addr = 1  # 通道1的寄存器起始地址：1+（n-1）*2
@@ -88,7 +90,7 @@ class DomesticAmplifier:
                 logger.error(f"读取失败: {response}")
                 return None
 
-            print(f"response = {response}, response.registers: {response.registers}, len = {len(response.registers)}")
+            logger.info(f"response = {response}, response.registers: {response.registers}, len = {len(response.registers)}")
             try:
                 results = {}
                 tasks = []
@@ -108,6 +110,7 @@ class DomesticAmplifier:
                 logger.error(f"未知错误: {str(e)}", exc_info=True)
                 return None     
     
+    # 本地调用接口，循环测试单个放大器的8个通道
     async def display_all_channels(self) -> None:
         """读取并显示所有通道测量值"""
         while not self.stop_event.is_set():
