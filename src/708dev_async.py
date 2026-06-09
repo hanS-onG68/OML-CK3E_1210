@@ -4,6 +4,7 @@ import struct
 import logging
 import atexit
 import psutil
+from datetime import datetime
 import subprocess
 from typing import Optional, Dict
 import asyncio
@@ -17,7 +18,7 @@ logger = setup_logger()
 
 
 class DomesticAmplifier:
-    def __init__(self, host:str, port:int, timeout:float, retries:int, slave_id:int):
+    def __init__(self, host:str, port:int = 502, timeout:float = 3.0, retries:int= 3, slave_id:int = 1):
         self.client: Optional[AsyncModbusTcpClient] = None
         self.stop_event = asyncio.Event()  # 用于控制循环停止的事件对象
         self.host = host
@@ -64,7 +65,6 @@ class DomesticAmplifier:
         logger.info(f"通道{channel}测量值: {val:.4f}")
         results[f"channel_{channel}"] = val
 
-    # 上层调用接口，获取设备8个通道的测量值，返回字典形式
     async def read_channels_measure(self):
         """
             功  能：异步读取所有通道测量值
@@ -109,6 +109,29 @@ class DomesticAmplifier:
                 logger.error(f"未知错误: {str(e)}", exc_info=True)
                 return None     
     
+    # 上层调用接口，获取设备8个通道的测量值
+    def read_data(self):
+        val = self.read_channels_measure()
+        if val is not None:
+            logger.info(f"当前测量值: {val}")
+            values = []
+            values.append(val["channel_1"])
+            values.append(val["channel_2"])
+            values.append(val["channel_3"])
+            values.append(val["channel_4"])
+            values.append(val["channel_5"])
+            values.append(val["channel_6"])
+            values.append(val["channel_7"])
+            values.append(val["channel_8"])
+            timestamp = datetime.now()
+            result = (self.host, timestamp, values)
+            logger.info(f"host:{self.host}, fetch data: {result}")
+            return result
+        else:
+            logger.error("获取测量值失败，返回None")
+            return None
+
+
     # 本地调用接口，循环测试单个放大器的8个通道
     async def display_all_channels(self) -> None:
         """读取并显示所有通道测量值"""
@@ -133,7 +156,7 @@ if __name__ == "__main__":
     安装依赖：pip install pymodbus
     """
     
-    @atexit.register  # ctrl+c时触发
+    @atexit.register  # Ctrl+c 时触发
     def auto_kill_modbus_connection():
             """程序退出时自动关闭连接到192.168.0.102:502的所有进程"""
             try:
