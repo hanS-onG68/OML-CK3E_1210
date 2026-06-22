@@ -1,6 +1,3 @@
-2026-05-17 21:39:22,003 - Controller[0] - INFO - is starting up ...
-2026-05-17 21:40:39,923 - Controller[0] - INFO - is starting up ...
-2026-05-17 21:40:44,355 - Controller[0] - INFO - connection is CLOSED
-2026-05-17 21:40:46,437 - Controller[0] - INFO - Controller is CONNECTED
-2026-05-17 21:41:38,234 - Controller[0] - INFO - is starting up ...
-2026-05-17 21:41:44,299 - Controller[0] - INFO - Controller is CONNECTED
+version https://git-lfs.github.com/spec/v1
+oid sha256:8cf46f45d84f955b04ddd8f8479d79cccda88b5164f6ebc686563c9ea2661b37
+size 420
