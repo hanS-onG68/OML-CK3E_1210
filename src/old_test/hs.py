@@ -87,11 +87,106 @@ def test5():
 k = np.full(10, np.nan)
 
 def test6():
-    from pymodbus.client import ModbusTcpClient
-    import inspect
-    print(f"inspect.signature(ModbusTcpClient.__init__): {inspect.signature(ModbusTcpClient.__init__)}")
+    # from pymodbus.client import ModbusTcpClient
+    # import inspect
+    # print(f"inspect.signature(ModbusTcpClient.__init__): {inspect.signature(ModbusTcpClient.__init__)}")
+
+    import pyqtgraph as pg
+    import numpy as np
+    # 直接弹出窗口绘制正弦曲线
+    pg.plot(np.sin(np.linspace(0, 10, 1000)), title="调试用波形图")
+
+    p = pg.GraphicsLayoutWidget()
+    p.ci = [1, 2]
+    print(f"pos = {p.ci}")
+
+
+from PySide2.QtWidgets import *
+import sys
+class test(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.set_GUI()
+
+    def set_GUI(self):
+        self.checkbox()
+        self.pushbutton()
+
+    def checkbox(self):
+        self.checkbox1 = QCheckBox(self)
+        self.checkbox1.setText("选项1")
+        self.checkbox1.setChecked(True)  # 默认选中
+        self.checkbox1.stateChanged.connect(lambda state: print(f"当前状态 = {state}"))
+
+        self.checkbox2 = QCheckBox(self)
+        self.checkbox2.setText("选项2")
+        self.checkbox2.setChecked(True)  # 默认选中
+        self.checkbox2.stateChanged.connect(lambda state: print(f"当前状态 = {state}"))
+
+        self.layout1 = QGridLayout(self)
+        self.layout1.addWidget(self.checkbox1, 0, 0)
+        self.layout1.addWidget(self.checkbox2, 1, 0)
+
+        self.groupbox = QGroupBox("test", self)
+        self.groupbox.setLayout(self.layout1)
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.addWidget(self.groupbox)
+        self.setLayout(self.main_layout)
+        # 可以顺便给窗口设个初始大小，体验更好
+        self.resize(500, 300)
+    def pushbutton(self):
+        self.button = QPushButton("按钮", self)
+        self.button.setCheckable(True)
+
+        self.layout1.addWidget(self.button, 2, 0)
+
+
+import sys
+from PySide2.QtWidgets import *
+from PySide2.QtGui import *
+from PySide2.QtCore import *
+
+class Demo(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.initUI()
+
+    def initUI(self):
+        # 1. 创建一个工具栏
+        toolbar = QToolBar()
+        # 2. 创建QToolButton并设置
+        btn = QToolButton()
+        btn.setIcon(QIcon('icon.png'))  # 替换为你的图标路径
+        btn.setText("保存")
+        # 图标在上，文字在下
+        btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+        btn.setToolTip("保存当前文件")
+        # 启用自动提升
+        btn.setAutoRaise(True)
+        btn.clicked.connect(lambda: print("保存功能被触发"))
+
+        # 3. 为按钮添加一个下拉菜单
+        self.menu = QMenu()
+        self.menu.addAction("另存为...")
+        self.menu.addAction("导出为PDF")
+        btn.setMenu(self.menu)
+        # 设置为点击小箭头才弹出菜单
+        btn.setPopupMode(QToolButton.MenuButtonPopup)
+
+        # 将按钮添加到工具栏
+        toolbar.addWidget(btn)
+
+        # 布局
+        layout = QVBoxLayout()
+        layout.addWidget(toolbar)
+        self.setLayout(layout)
+        self.setWindowTitle('QToolButton 示例')
+        self.resize(500, 300)
 
 
 
 if __name__ == "__main__":
-    test6()
+    app = QApplication(sys.argv)
+    win = Demo()
+    win.show()
+    sys.exit(app.exec_())

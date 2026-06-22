@@ -1,0 +1,2 @@
+.venv_hs/lib/python3.10/site-packages/PySide2/Qt/lib/libQt5WebEngineCore.so.5 filter=lfs diff=lfs merge=lfs -text
+src/sdy/mirror_control/src/MIRRORS.log filter=lfs diff=lfs merge=lfs -text
