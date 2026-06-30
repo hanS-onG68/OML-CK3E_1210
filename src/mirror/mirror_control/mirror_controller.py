@@ -42,7 +42,7 @@ class Mirrors:
         kp_file = resources.files("mirror.mirror_control").joinpath("settings/Coefficient_K_p.csv")
         self.K_p = np.loadtxt(kp_file, delimiter=',', skiprows=1)    # 增益
         threshold_file = resources.files("mirror.mirror_control").joinpath("settings/Threshold.csv")
-        self.Threshold = np.loadtxt(threshold_file, delimiter=',', skiprows=1)    # 阈值：对应位置的传感器不超过该位置的阈值时，不需要动
+        self.Threshold = np.loadtxt(threshold_file, delimiter=',', skiprows=1)              # 阈值：对应位置的传感器不超过该位置的阈值时，不需要动
         self.Force_limit_pos = np.ones((MIRRORS_COUNT, ACTUATORS_PER_MIRROR))*100.0         # 力值上限
         self.Force_limit_neg = np.ones((MIRRORS_COUNT, ACTUATORS_PER_MIRROR))*-100.0        # 力值下限
         self.Force_timeout = FORCE_TIMEOUT
@@ -60,12 +60,12 @@ class Mirrors:
         mapping_file = resources.files("mirror.mirror_control").joinpath("settings/Actuator_Mapping.csv")
         self.mapping = np.loadtxt(mapping_file, delimiter=',', skiprows=1, dtype=int)
         self.actuator_id, self.controller_id, self.axis_id, self.amplifer_id, self.channel_id = self.mapping.T    # 配置表拆成5个列向量
-        self._sensor_idx = self.amplifer_id*SENSORS_PER_AMP + self.channel_id                                # 逻辑促动器空间到物理传感器空间的映射（1*150）
+        self._sensor_idx = self.amplifer_id*SENSORS_PER_AMP + self.channel_id                                     # 逻辑促动器空间到物理传感器空间的映射（1*150）
 
         # 共享内存
         self.shm = self._create_shm()
         self._buffer = np.ndarray((CAPACITY_SENSORS*2,), dtype=np.float64, buffer=self.shm.buf)
-        self._buffer.fill(15.0)  # 初始化共享内存数据区，避免初始全0导致的误动
+        self._buffer.fill(15.0)                             # 初始化共享内存数据区，避免初始全0导致的误动
         self._data =  self._buffer[:CAPACITY_SENSORS]       # 传感器数据视图，零拷贝
         self._timestamp = self._buffer[CAPACITY_SENSORS:]   # 传感器时间戳视图，零拷贝
 

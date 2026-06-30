@@ -7,6 +7,7 @@ import pyqtgraph as pg
 from typing import List, Tuple
 import random  # 用于模拟传感器数据
 from mirror.mirror_control.mirror_controller import Mirrors
+from mirror.mirror_control.config import Actuator2Pon_Map
 
 # 设置pyqtgraph选项
 pg.setConfigOptions(antialias=True, useOpenGL=True)  # 启用OpenGL加速
@@ -18,7 +19,6 @@ class HexagonSensorVisualizer(QMainWindow):
         self.sensor_count = 25  #（中心镜不部署传感器）
         self.mirror = Mirrors()
         self.sensor_data = self.mirror.Force[0]                  # 传感器数据25个
-        # self.sensor_data[:5] = np.random.uniform(-10, 100, 5)  # 仅测试使用：随机生成一些初始数据，其他为NaN表示未读到数据
         self.sensor_idx = self.mirror._sensor_idx                
         
         # 几何参数：对边距离2米
@@ -62,13 +62,8 @@ class HexagonSensorVisualizer(QMainWindow):
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_simulation_data)
         
-        
-        # 初始可视化
-        # self.update_visualization()
-        
         # 保存初始视图范围
         self.save_initial_view_range()
-        # QTimer.singleShot(0, lambda: asyncio.create_task(self.monitor_task())) # 窗口显示完成后再启动异步任务，不阻塞初始化
 
     async def monitor_task(self):
         # 后台开启传感器数据处理流程
@@ -260,44 +255,6 @@ class HexagonSensorVisualizer(QMainWindow):
         # 分隔线
         layout.addWidget(self.create_h_line())
         
-        # 几何信息
-        # geo_group = QGroupBox("几何参数")
-        # geo_layout = QVBoxLayout()
-        # geo_layout.addWidget(QLabel(f"六边形对边距: {self.flat_to_flat:.3f}米"))
-        # geo_layout.addWidget(QLabel(f"六边形边长: {self.side_length:.3f}米"))
-        # geo_layout.addWidget(QLabel(f"中心间距: {self.flat_to_flat:.3f}米"))
-        # geo_layout.addWidget(QLabel("排列方式: 蜂巢紧密"))
-        # geo_layout.addWidget(QLabel("传感器: 72个(6×12)"))
-        # geo_layout.addWidget(QLabel("中心镜: 无传感器，安装改正镜"))
-        # geo_layout.addWidget(QLabel("改正镜直径: 2米"))
-        # geo_group.setLayout(geo_layout)
-        # layout.addWidget(geo_group)
-        
-        # 视图控制
-        # view_group = QGroupBox("视图控制")
-        # view_layout = QVBoxLayout()
-        
-        # restore_btn = QPushButton("还原视图 (恢复初始缩放)")
-        # restore_btn.clicked.connect(self.restore_initial_view)
-        # restore_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 5px;")
-        # view_layout.addWidget(restore_btn)
-        
-        # view_info = QLabel("视图控制说明:")
-        # view_info.setStyleSheet("font-weight: bold; color: #cccccc;")
-        # view_layout.addWidget(view_info)
-        
-        # view_instructions = QLabel(
-        #     "• 鼠标滚轮: 缩放视图\n"
-        #     "• 鼠标拖动: 平移视图\n"
-        #     "• 右键拖动: 框选放大\n"
-        #     "• 双击: 自动缩放到适合\n"
-        #     "• 点击上方按钮还原初始视图"
-        # )
-        # view_instructions.setStyleSheet("color: #999999; font-size: 10pt;")
-        # view_layout.addWidget(view_instructions)
-        
-        # view_group.setLayout(view_layout)
-        # layout.addWidget(view_group)
         
         # 数据更新频率
         freq_group = QGroupBox("更新设置")
@@ -328,17 +285,6 @@ class HexagonSensorVisualizer(QMainWindow):
         self.cmap_combo.currentTextChanged.connect(self.on_colormap_changed)
         cmap_sub_layout.addWidget(self.cmap_combo)
         cmap_layout.addLayout(cmap_sub_layout)
-        
-        # 没起作用
-        # self.show_lines_check = QCheckBox("显示传感器连接线")
-        # self.show_lines_check.setChecked(True)
-        # self.show_lines_check.stateChanged.connect(self.update_visualization)
-        # cmap_layout.addWidget(self.show_lines_check)
-        
-        # self.show_values_check = QCheckBox("显示传感器数值")
-        # self.show_values_check.setChecked(True)
-        # self.show_values_check.stateChanged.connect(self.update_visualization)
-        # cmap_layout.addWidget(self.show_values_check)
         
         cmap_group.setLayout(cmap_layout)
         layout.addWidget(cmap_group)
@@ -495,9 +441,6 @@ class HexagonSensorVisualizer(QMainWindow):
     
     def update_visualization(self):
         """更新可视化"""
-        # self.update_global_statistics()
-        # self.update_mirror_statistics()
-        
         if self.cmap_combo is None:
             return
         
@@ -510,67 +453,10 @@ class HexagonSensorVisualizer(QMainWindow):
         self.filter_enabled = False
         if self.filter_check:  # 异常传感器
             self.filter_enabled = self.filter_check.isChecked()
-        
-        # data_min, data_max = -100, 100
-        # data_range = data_max - data_min
-        
-        spots = []
-        
-        # for item in self.current_text_items:
-        #     self.main_plot.removeItem(item)
-        # self.current_text_items = []
-        
-        # show_values = self.show_values_check and self.show_values_check.isChecked()
-        
-        # for i, (x, y) in enumerate(self.sensor_positions):
-        #     value = self.sensor_data[i]
-            
-        #     if filter_enabled and value <= threshold:  # 过滤掉异常传感器
-                # continue
-            # if np.isnan(value):
-            #     color = QColor(128, 128, 128)  # 灰色
-            # else:
-            #     if data_range > 0:
-            #         normalized = (value - data_min) / data_range
-            #     else:
-            #         normalized = 0.5
-            #     color = self.current_colormap.mapToQColor(normalized)
-                
-            # point = self.scatter_plot.points()[i]
-            # point.setBrush(color)
-            # if i%25%2 == 1:  # 外圈点用方形，内圈点用圆形
-            #     # spots.append({
-            #     #     'pos': (x, y),
-            #     #     'size': 25,
-            #     #     'brush': pg.mkBrush(color),
-            #     #     'pen': pg.mkPen('#ffffff', width=2.5),
-            #     #     'symbol': 'o' # 散点形状：'o'代表圆形(默认)
-            #     # })
-            #     point.setSymbol('s')
-            # else:
-            #     # spots.append({
-            #     #     'pos': (x, y),
-            #     #     'size': 25,
-            #     #     'brush': pg.mkBrush(color),
-            #     #     'pen': pg.mkPen('#ffffff', width=2.5),
-            #     #     'symbol': 's'  # 散点形状：'s'代表方形
-            #     # })
-            #     point.setSymbol('s')
-            
-            # if show_values:
-            # text = pg.TextItem(f"{value:.1f}", anchor=(0.5, 0.5))
-            # text.setPos(x, y - 0.12)
-            # text.setColor('#ffffff')
-            # text.setFont(QFont('Arial', 14))
-            # self.main_plot.addItem(text)
-            # self.current_text_items.append(text)
-            # self.current_text_items[i].setText(f"{value:.1f}")
-        # self.scatter_plot.update()
-        # self.scatter_plot.setData(spots)
 
     async def update_scatter(self):
         if not self.current_text_items:
-            for i, (x, y) in enumerate(self.sensor_positions): # i 就是传感器的物理位置
+            for i, (x, y) in enumerate(self.sensor_positions): # i 就是传感器的物理位置，对应文件setting/Actuator_Mapping.csv中的actuator_id（i = actuator_id）
                 value = self.sensor_data[i]
                 point = self.scatter_plot.points()[i]
                 if i%25%2 == 1:  # 外圈点用方形，内圈点用圆形
@@ -779,13 +665,13 @@ class HexagonSensorVisualizer(QMainWindow):
             self.checkboxes = []
             for i, act_idx in enumerate(actuator_indices):
                 # 促动器编号从1开始显示
-                cb = QCheckBox(f"促动器 {act_idx+1}")
+                phy_id = Actuator2Pon_Map[act_idx]
+                act_name = f"促动器-{act_idx}({phy_id})"
+                cb = QCheckBox(f"{act_name}")
                 row = i // 8
                 col = i % 8
                 grid_layout.addWidget(cb, row, col)
                 self.checkboxes.append(cb)
-                # 动态设置为类的独立成员，格式self.checkbox_1，self.checkbox_2...
-                # setattr(self, f"checkbox_{act_idx + 1}", cb)
 
             for i in range(1, 13, 2):
                 self.checkboxes[i].toggled.connect(lambda checked, cb=self.checkboxes[i+12]: self.sync_cb(checked, cb))
@@ -848,21 +734,7 @@ class HexagonSensorVisualizer(QMainWindow):
         """子镜全选复选框的状态改变时，同步该组所有促动器复选框"""
         for cb in checkboxes:
             cb.setChecked(state == Qt.Checked)
-        # if self.test_dialog_groups[0]["mirror_idx"] == 0:  # 镜2是第一个子镜
-        #     # print(f"[测试矩阵] 子镜 {self.test_dialog_groups[0]['mirror_idx']+2} 全选状态: {'选中' if state == Qt.Checked else '未选中'}")
-        #     # 收集所有选中的促动器编号（全局索引，从1开始）
-        #     selected_actuators = []
-        #     # print(f"当前子镜复选框总数: {len(checkboxes)}")
-        #     for i, cb in enumerate(checkboxes):
-        #         if cb.isChecked():
-        #             act_global_index = self.test_dialog_groups[0]['start_idx'] + i + 1  # 1-based
-        #             selected_actuators.append(act_global_index)
-        #             # print(f"[测试矩阵] 当前选中促动器: {cb.text()} (全局编号: {act_global_index})",  flush=True)
 
-        #     if not selected_actuators:
-        #         # print(f"[测试矩阵]提示: 未选择任何促动器")
-        #         return
-            
     def _test_matrix_execute(self, control_layout, dialog, force_edit):
         """执行测试：收集选中的促动器编号和目标力，并输出（可扩展为实际发送指令）"""
         try:
@@ -885,27 +757,8 @@ class HexagonSensorVisualizer(QMainWindow):
             QMessageBox.information(dialog, "提示", "未选择任何促动器")
             return
 
-        # if not increment_force:  # 非增量模式
-        #     target_force = float(target_force)
-        #     msg = f"将施加力 {target_force} N 到以下 {len(selected_actuators)} 个促动器:\n"
-        #     # 每行最多显示10个编号
-        #     for i in range(0, len(selected_actuators), 10):
-        #         msg += ", ".join(str(idx) for idx in selected_actuators[i:i+10]) + "\n"
-        #     QMessageBox.information(dialog, "测试指令", msg)
-
-        #     # 将目标值反馈给Mirrors.Target
-        #     for actuator_index in selected_actuators:
-        #         Mirrors.Target[0][actuator_index - 1] = target_force
-        #     print(f"[主动光学测试] 施加力 {target_force} N 到促动器: {selected_actuators}")
-        # else: # 增量模式
-        #     increment_force = float(increment_force)
-        #     for actuator_index in selected_actuators:
-        #         Mirrors.Target[0][actuator_index - 1] += increment_force
 
 def palette_set():
-    # app = QApplication(sys.argv)
-    # app.setStyle('Fusion')
-    
     palette = QPalette()
     palette.setColor(QPalette.Window, QColor(53, 53, 53))
     palette.setColor(QPalette.WindowText, Qt.white)
@@ -920,34 +773,20 @@ def palette_set():
     palette.setColor(QPalette.Highlight, QColor(42, 130, 218))
     palette.setColor(QPalette.HighlightedText, Qt.white)
     app.setPalette(palette)
-    
-    # window = HexagonSensorVisualizer()
-    # window.show()
-    
-    # sys.exit(app.exec_())
 
 if __name__ == "__main__":
-    # from pycallgraph2 import PyCallGraph
-    # from pycallgraph2.output import GraphvizOutput
     import asyncio
-
-    # 配置输出，生成图片文件
-    # graphviz = GraphvizOutput()
-    # graphviz.output_file = 'call_graph.png'
-
     try:
-        # 运行目标代码，自动生成调用图
-        # with PyCallGraph(output=graphviz):
-            # 开始跟踪调用
-            from qasync import QEventLoop, asyncSlot
-            app = QApplication(sys.argv)
-            with QEventLoop(app) as loop:
-                asyncio.set_event_loop(loop)
-                palette_set()
-                window = HexagonSensorVisualizer()
-                window.show()
-                loop.create_task(window.monitor_task())
-                loop.run_forever()
+        # 开始跟踪调用
+        from qasync import QEventLoop, asyncSlot
+        app = QApplication(sys.argv)
+        with QEventLoop(app) as loop:
+            asyncio.set_event_loop(loop)
+            palette_set()
+            window = HexagonSensorVisualizer()
+            window.show()
+            loop.create_task(window.monitor_task())
+            loop.run_forever()
     except Exception as e:
         print(f"出现异常, e = {str(e)}")
         

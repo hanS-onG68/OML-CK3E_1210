@@ -11,18 +11,6 @@ from datetime import datetime
 
 def collector(host:str, amp_id:int, shm_name:str, stop_event:Event, start_time:float, *, interval:float=2.0, data_rate:float=1.0, debug=False):
     """单个Amplifier的子进程执行函数"""
-    
-    #def loop_sleeper():
-    #    """固定速率-定时器"""
-    #    nonlocal start_time
-    #    start_time += interval
-    #    curr_time = time.monotonic()
-    #    diff_time = start_time - curr_time
-    #    sleep_time = max(0, diff_time)
-    #    if diff_time < 0:
-    #        logger.warning("Loop delay: {diff_time:0.3f}s")
-    #    time.sleep(sleep_time)
-
     logger = OCS_Logger(name=f"Amplifier[{amp_id:02d}]", debug=debug)
     # amplifier = Amplifier(path=path, amp_id=amp_id, data_rate=data_rate)  # 进口放大器
     amplifier = Amplifier(host)                                             # 国产放大器
