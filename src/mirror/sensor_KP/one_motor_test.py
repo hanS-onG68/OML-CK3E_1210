@@ -4,7 +4,7 @@ from datetime import datetime
 import asyncio
 from typing import Optional, List
 # from mirror.sensor_KP.sensor import SensorReader   # 需要替换成国产
-from mirror.amplifier.domestic_amplifier import Amplifier
+# from mirror.amplifier.domestic_amplifier import Amplifier
 from mirror.pmac_controller import PMAC_Controller
 import csv
 from mirror.sensor_KP.plot import DataAnalyzer
@@ -52,7 +52,7 @@ def run_plot_task(filepath: str, x_col: str, y_col: str, sensor_index: int) -> b
 
 
 class OneMotorTest:
-    def __init__(self, amplifier_id: int, channel_id: int, amplifier: Amplifier, pmac: Optional[PMAC_Controller], df: Optional[pd.DataFrame]): 
+    def __init__(self, amplifier_id: int, channel_id: int, amplifier, pmac: Optional[PMAC_Controller], df: Optional[pd.DataFrame]): 
         self.logger = setup_logger()
         try:
             matched = df[(df['Channel_id'] == channel_id) & (df['Amplifier_id'] == amplifier_id)]

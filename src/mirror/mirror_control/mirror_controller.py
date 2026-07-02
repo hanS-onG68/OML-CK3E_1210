@@ -26,9 +26,10 @@ from mirror.mirror_control.utils import OCS_Logger
 class Mirrors:
     """子镜面形闭环控制类"""
     Target:Optional[np.ndarray] = None       # 力维持目标值，由上层提供(主动光学/查表)
-    def __init__(self, debug=False):
+    def __init__(self, debug=False, is_domestic:bool = True):
         self.debug = debug
         self.logger = OCS_Logger(name="MIRRORS", debug=self.debug)
+        self.is_domestic = is_domestic       # 区分是国产的放大器还是进口的放大器，True表示国产，False表示进口
 
         # 控制标签
         self.stop_event = Event()
@@ -122,20 +123,20 @@ class Mirrors:
             self.logger.info(f"Controllers[{ctrl_id}] is CONNECTED to {ctrl_ip}")
 
     def _create_amplifiers(self):
-        port_file = resources.files("mirror.mirror_control").joinpath("settings/Amplifier_Mapping.csv")
-        self.amplifers = self._load_hardware_config(port_file, col=1, defaults=DEFAULT_AMP_PORTS)
+        amp_file = resources.files("mirror.mirror_control").joinpath("settings/Domestic_Amplifier_Mapping.csv") if self.is_domestic else resources.files("mirror.mirror_control").joinpath("settings/Imported_Amplifier_Mapping.csv")
+        self.amplifers = self._load_hardware_config(amp_file, col=1, defaults=DEFAULT_AMP_PORTS)
         self.start_time = time.monotonic()
         self.Amplifiers = dict()
         for amp_id in np.unique(self.amplifer_id[self.Available.ravel()]):
-            amp_ip = self.amplifers[amp_id]
+            amp_info = self.amplifers[amp_id]   # 国产：amp_info表示ip，进口：amp_info表示串口号（形如：/dev/ttry00）
             worker = Process(
-                    target=collector,
-                    args=(amp_ip, amp_id, SHM_NAME, self.stop_event, self.start_time,),
-                    kwargs={'interval':1.0, 'data_rate':1.0, 'debug':self.debug, },
+                target=collector,
+                args=(amp_info, amp_id, SHM_NAME, self.stop_event, self.start_time,),
+                kwargs={'interval':1.0, 'data_rate':1.0, 'debug':self.debug, 'is_domestic':self.is_domestic},
             )
             worker.start()
             self.Amplifiers[amp_id] = worker
-            self.logger.info(f"Amplifiers[{amp_id}] is CONNECTED to {amp_ip}")
+            self.logger.info(f"Amplifiers[{amp_id}] is CONNECTED to {amp_info}")
     
     # 未被调用
     def _mask_blocked(self, path):

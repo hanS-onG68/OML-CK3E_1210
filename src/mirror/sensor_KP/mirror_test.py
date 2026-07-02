@@ -4,7 +4,8 @@ from datetime import datetime
 import asyncio
 from typing import Optional
 # from mirror.sensor_KP.sensor import SensorReader
-from mirror.amplifier.domestic_amplifier import Amplifier
+from mirror.amplifier.domestic_amplifier import Amplifier as DomesticAmplifier
+from mirror.amplifier.imported_amplifier import Amplifier as ImportedAmplifier
 from mirror.pmac_controller import PMAC_Controller, SSH_Config
 import csv
 from mirror.logger import setup_logger
@@ -51,8 +52,9 @@ Id2Controler = {
 }
 
 class MirrorsTest:
-    def __init__(self):
+    def __init__(self, is_domestic:bool = True):
        self.logger = setup_logger()
+       self.is_domestic = is_domestic  #  区分是国产的放大器还是进口的放大器，True表示国产，False表示进口
        try:
            from importlib import resources
            file = resources.files("mirror.sensor_KP").joinpath("controler2amplifier2sensor2motor.csv")
@@ -62,7 +64,7 @@ class MirrorsTest:
            return
        pass
     
-    def get_ttry_devices(self):  # 进口放大器
+    def get_imported_amplifier_info(self):  # 进口放大器
         ttyr_list = []
         try:
             path = pathlib.Path("/dev/").iterdir()
@@ -73,7 +75,7 @@ class MirrorsTest:
         except Exception as e:
             self.logger.error(f"{inspect.currentframe().f_code.co_name} 出现异常，Error: {str(e)}")
             return []
-    def get_amplifier_devices(self):  # 国产放大器
+    def get_domestic_amplifier_info(self):  # 国产放大器
         dev_info = []
         start_ip = "192.168.0."  # 起始ip
         for id in range(102, 105, 1): # 全部需要19个放大器，测试时可根据需要收放
@@ -81,7 +83,17 @@ class MirrorsTest:
             dev_info.append({"amp_id": id-102, "ip": current_ip})
         return dev_info
     
-    async def one_amplifier_test(self, amplifier):
+    async def get_sensor_reader(self, amp_info):
+        loop = asyncio.get_running_loop()
+        if self.is_domestic:
+            sensor_reader = await loop.run_in_executor(None, DomesticAmplifier, amp_info["ip"])  # 国产放大器
+            amplifier_id = amp_info["amp_id"]   # 国产放大器
+            return amplifier_id, sensor_reader
+        sensor_reader = await loop.run_in_executor(None, ImportedAmplifier, amp_info, 3, 1.0)  # 进口放大器
+        amplifier_id = int(amp_info[9:])
+        return amplifier_id, sensor_reader
+    
+    async def one_amplifier_test(self, amp_info):
         async def _wrap_motor_test(motor_test):    # 给单个电机任务包异常捕获，异常只影响自己
             try:
                 await motor_test.run_test(
@@ -92,12 +104,8 @@ class MirrorsTest:
             except Exception as e:
                 self.logger.error(f"❌ 电机{motor_test.motor_id}测试失败: {str(e)}，已安全停转")
     
-        loop = asyncio.get_running_loop()
-        # sensor = await loop.run_in_executor(None, SensorReader, amplifier, 3, 1.0)  # 进口放大器
         # sensor = SensorReader(path=amplifier, group_id=3, datarate=1.0)   # 一个放大器上的8个通道共用一个读取器
-        sensor = await loop.run_in_executor(None, Amplifier, amplifier["ip"])  # 国产放大器
-        # amplifier_id = int(amplifier[9:])  # 进口放大器
-        amplifier_id = amplifier["amp_id"]   # 国产放大器
+        amplifier_id, sensor_reader = await self.get_sensor_reader(amp_info)
         pmac_controler = None
         try:
             matched = self.df[(self.df['Amplifier_id'] == amplifier_id)]
@@ -118,7 +126,7 @@ class MirrorsTest:
                 for channel_id in range(1, 9):
                     if self.df[(self.df['Amplifier_id'] == amplifier_id) & (self.df['Channel_id'] == channel_id)]['Motor_id'].values[0] == -1:  # 放大器通道未连接电机
                         continue
-                    motor = OneMotorTest(amplifier_id, channel_id, sensor, pmac, self.df)    # 测试传感器对应的电机
+                    motor = OneMotorTest(amplifier_id, channel_id, sensor_reader, pmac, self.df)    # 测试传感器对应的电机
                     task = asyncio.create_task(_wrap_motor_test(motor))
                     tasks.append(task)
                 await asyncio.gather(*tasks, return_exceptions=True)
@@ -127,22 +135,21 @@ class MirrorsTest:
             self.logger.error(f"❌ 放大器测试出现异常: {str(e)}")
 
     async def main(self):
-        async def _wrap_amp_test(amp):       # 给每个放大器任务也加一层异常隔离，单个放大器异常不影响其他
+        async def _wrap_amp_test(amp_info):       # 给每个放大器任务也加一层异常隔离，单个放大器异常不影响其他
             try:
-                await self.one_amplifier_test(amp)
+                await self.one_amplifier_test(amp_info)
             except Exception as e:
-                self.logger.error(f"❌ 放大器{amp}测试异常: {str(e)}")
+                self.logger.error(f"❌ 放大器{amp_info}测试异常: {str(e)}")
         
-        # amplifier_list = self.get_ttry_devices()    # 进口放大器
-        amplifier_list =  self.get_amplifier_devices()  # 国产放大器
-        if not amplifier_list:
+        amplifier_info_list =  self.get_domestic_amplifier_info() if self.is_domestic else self.get_imported_amplifier_info()
+        if not amplifier_info_list:
             self.logger.error("❌ 没有找到任何设备，程序退出")
             return
         try:
             tasks = []
-            self.logger.info(f"✅ 找到ttyr设备: {[amplifier for amplifier in amplifier_list]}")
-            for amplifier in amplifier_list:         # 测试设备上的所有放大器
-                task = asyncio.create_task(_wrap_amp_test(amplifier))
+            self.logger.info(f"✅ 找到ttyr设备: {[amplifier for amplifier in amplifier_info_list]}")
+            for amp_info in amplifier_info_list:         # 测试设备上的所有放大器
+                task = asyncio.create_task(_wrap_amp_test(amp_info))
                 tasks.append(task)
             await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
@@ -154,7 +161,7 @@ class MirrorsTest:
 
 if __name__ == "__main__":
     try:
-        asyncio.run(MirrorsTest().main())
+        asyncio.run(MirrorsTest(is_domestic=True).main())
     except Exception as e:
         print(f"程序出现异常，正在退出..., {e}")
         pass

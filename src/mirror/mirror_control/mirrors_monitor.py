@@ -17,7 +17,7 @@ class HexagonSensorVisualizer(QMainWindow):
     def __init__(self):
         super().__init__()
         self.sensor_count = 25  #（中心镜不部署传感器）
-        self.mirror = Mirrors()
+        self.mirror = Mirrors(is_domestic=True)                  # 假设使用国产放大器
         self.sensor_data = self.mirror.Force[0]                  # 传感器数据25个
         self.sensor_idx = self.mirror._sensor_idx                
         

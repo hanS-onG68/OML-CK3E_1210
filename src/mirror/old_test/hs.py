@@ -17,5 +17,10 @@ def stop(pid):
     """停止服务"""
     click.echo(f"Stopping process {pid}")
 
+
+
+port_file = resources.files("mirror.mirror_control").joinpath("settings/Domestic_Amplifier_Mapping.csv") if self.is_domestic else resources.files("mirror.mirror_control").joinpath("settings/Imported_Amplifier_Mapping.csv")
+amplifers = _load_hardware_config(port_file, col=1, defaults=DEFAULT_AMP_PORTS)
+
 if __name__ == "__main__":
     cli()
