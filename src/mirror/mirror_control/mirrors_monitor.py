@@ -233,7 +233,7 @@ class HexagonSensorVisualizer(QMainWindow):
             self.hexagon_items.append(hex_line)
             
             # 添加六边形中心标签
-            text = pg.TextItem(f"子镜", color='#4CAF50', anchor=(0.5, 1.5))
+            text = pg.TextItem(f"子镜2", color='#4CAF50', anchor=(0.5, 1.5))
             text.setPos(cx, cy)
             text.setFont(QFont('Arial', 15))
             self.main_plot.addItem(text)
@@ -665,7 +665,7 @@ class HexagonSensorVisualizer(QMainWindow):
             self.checkboxes = []
             for i, act_idx in enumerate(actuator_indices):
                 # 促动器编号从1开始显示
-                phy_id = Actuator2Pon_Map[act_idx]
+                phy_id = Actuator2Pon_Map[2][act_idx]  # 2号边缘子镜
                 act_name = f"促动器-{act_idx}({phy_id})"
                 cb = QCheckBox(f"{act_name}")
                 row = i // 8
@@ -725,10 +725,9 @@ class HexagonSensorVisualizer(QMainWindow):
         self.test_matrix_dialog = dialog
 
     def sync_cb(self, checked, cb):
-                from PySide2.QtCore import Qt
-                cb.blockSignals(True)
-                cb.setChecked(checked)
-                cb.blockSignals(False)
+        cb.blockSignals(True)
+        cb.setChecked(checked)
+        cb.blockSignals(False)
 
     def _on_select_all_mirror(self, state, checkboxes):
         """子镜全选复选框的状态改变时，同步该组所有促动器复选框"""
