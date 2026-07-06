@@ -74,7 +74,7 @@ class Mirrors:
         self._create_controllers()
 
         # 传感器
-        self._create_amplifiers()
+        # self._create_amplifiers()
 
     async def close(self):
         if self.stop_event and not self.stop_event.is_set():
@@ -123,6 +123,8 @@ class Mirrors:
             self.logger.info(f"Controllers[{ctrl_id}] is CONNECTED to {ctrl_ip}")
 
     def _create_amplifiers(self):
+        def run_collector(amp_info:str, amp_id:int, shm_name:str, stop_event:Event, start_time:float, *, interval:float=2.0, data_rate:float=1.0, debug=False, is_domestic:bool = True):
+            asyncio.run(collector(amp_info, amp_id, shm_name, stop_event, start_time, interval=1.0, data_rate=1.0, debug=debug, is_domestic=is_domestic))
         amp_file = resources.files("mirror.mirror_control").joinpath("settings/Domestic_Amplifier_Mapping.csv") if self.is_domestic else resources.files("mirror.mirror_control").joinpath("settings/Imported_Amplifier_Mapping.csv")
         self.amplifers = self._load_hardware_config(amp_file, col=1, defaults=DEFAULT_AMP_PORTS)
         self.start_time = time.monotonic()
@@ -130,7 +132,7 @@ class Mirrors:
         for amp_id in np.unique(self.amplifer_id[self.Available.ravel()]):
             amp_info = self.amplifers[amp_id]   # 国产：amp_info表示ip，进口：amp_info表示串口号（形如：/dev/ttry00）
             worker = Process(
-                target=collector,
+                target=run_collector,
                 args=(amp_info, amp_id, SHM_NAME, self.stop_event, self.start_time,),
                 kwargs={'interval':1.0, 'data_rate':1.0, 'debug':self.debug, 'is_domestic':self.is_domestic},
             )
@@ -241,7 +243,7 @@ class Mirrors:
 
 
 if __name__ == "__main__":
-    mirrors = Mirrors()
+    mirrors = Mirrors(is_domestic=False)
     def _atexit_cleanup():
         asyncio.run(mirrors.close())
     atexit.register(_atexit_cleanup)

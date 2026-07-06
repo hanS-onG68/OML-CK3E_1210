@@ -16,17 +16,18 @@ class HexagonSensorVisualizer(QMainWindow):
     """六边形传感器可视化主窗口"""
     def __init__(self):
         super().__init__()
-        self.sensor_count = 25  #（中心镜不部署传感器）
-        self.mirror = Mirrors(is_domestic=True)                  # 假设使用国产放大器
-        self.sensor_data = self.mirror.Force[0]                  # 传感器数据25个
-        self.sensor_idx = self.mirror._sensor_idx                
+        self.actuators_per_mirror = 25  #（中心镜不部署传感器,每个边缘子镜的传感器数量）
+        self.mirror_count = 6           # 6个边缘子镜
+        self.mirror = Mirrors(is_domestic=False)      # 假设使用进口放大器
+        self.sensor_data = self.mirror.Force          # 传感器数据
+        # self.sensor_idx = self.mirror._sensor_idx                
         
         # 几何参数：对边距离2米
-        self.flat_to_flat = 6.0  # 对边距离
-        self.side_length = self.flat_to_flat / np.sqrt(3)  # 边长 ≈ 1.1547米
+        self.flat_to_flat = 3.0                             # 对边距离
+        self.side_length = self.flat_to_flat / np.sqrt(3)   # 边长 ≈ 1.1547米
         
-        self.hexagon_centers = [(0,0)]                          # 各个子镜的中心位置（x,y) - 蜂巢紧密排列
-        self.sensor_positions = self.calculate_hexagon_layout() # 各个传感器的位置坐标（x,y)
+        self.hexagon_centers = self.calculate_hexagon_centers()            # 各个子镜的中心位置（x,y) - 蜂巢紧密排列
+        self.sensor_positions = np.array(self.calculate_hexagon_layout())  # 各个传感器的位置坐标（x,y): 依次从物理标定的边缘子镜1~边缘子镜6，子镜1的逻辑0（即self.sensor_positions[0,0]）对应mirror.Force[0][0]
         
         # 保存初始视图范围
         self.initial_view_range = None
@@ -47,7 +48,7 @@ class HexagonSensorVisualizer(QMainWindow):
         
         # 性能优化：预创建对象池
         self.connection_lines = []
-        self.current_text_items = []
+        self.current_text_items = np.empty((self.mirror_count, self.actuators_per_mirror), dtype=object)  # 用于显示传感器数值的文本项
         self.hexagon_items = []
         
         # 分子镜统计标签
@@ -71,13 +72,31 @@ class HexagonSensorVisualizer(QMainWindow):
         # asyncio.create_task(self.update_sensor_data())
         asyncio.create_task(self.update_scatter())
         
+    def calculate_hexagon_centers(self):
+        """计算7个六边形的中心位置 - 真正蜂巢紧密排列"""
+        # 中心六边形
+        centers = [(0, 0)]
+        
+        # 中心间距 = 对边距离 = 2米
+        center_distance = self.flat_to_flat  # 2.0米
+        
+        # 六个方向的角度（从水平向右开始，逆时针60°递增）
+        angles = [90, 30, -30, -90, -150, -210]
+        
+        for angle in angles:
+            # 将角度转换为弧度
+            rad = np.radians(angle)
+            x = center_distance * np.cos(rad)
+            y = center_distance * np.sin(rad)
+            centers.append((x, y)) 
+        return centers
+
     def calculate_hexagon_layout(self) -> List[Tuple[float, float]]:
         """计算蜂窝状传感器布局坐标 - 蜂巢紧密排列"""
-        positions = []
+        positions = [[] for _ in range(6)]  # 6个空列表，分别对应6个周边子镜的传感器点位
         
-        # 六边形的中心位置
-        cx = 0
-        cy = 0
+        # 7个六边形的中心位置
+        centers = self.hexagon_centers
         
         # 每个六边形内12个传感器的角度分布
         angles = np.linspace(0, 2*np.pi, 13)[:-1]  # 12个等分角度=2π/12=30°：0、30、60、90、120、150、180、210、240、270、300、330
@@ -87,14 +106,18 @@ class HexagonSensorVisualizer(QMainWindow):
         outer_radius = self.side_length * 0.75  # 外圈半径 0.75
         
         # 只计算周围6个子镜的传感器（中心镜不部署传感器）
-        positions.append((cx, cy))        
-        for i, angle in enumerate(angles):
-            x1 = cx + inner_radius * np.cos(angle)
-            y1 = cy + inner_radius * np.sin(angle)
-            x2 = cx + outer_radius * np.cos(angle)
-            y2 = cy + outer_radius * np.sin(angle)
-            positions.append((x2, y2))   # 外圈：奇数下标
-            positions.append((x1, y1))   # 内圈：偶数下标
+        # 只计算周围6个子镜的传感器（中心镜不部署传感器）
+        for center_idx, (cx, cy) in enumerate(centers):
+            if center_idx == 0:  # 跳过中心镜（镜1）
+                continue
+            positions[center_idx-1].append((cx, cy))
+            for i, angle in enumerate(angles):
+                x1 = cx + inner_radius * np.cos(angle)
+                y1 = cy + inner_radius * np.sin(angle)
+                x2 = cx + outer_radius * np.cos(angle)
+                y2 = cy + outer_radius * np.sin(angle)
+                positions[center_idx-1].append((x2, y2))   # 外圈：奇数下标
+                positions[center_idx-1].append((x1, y1))   # 内圈：偶数下标
         return positions  
         # 一个子镜的25个传感器：
                 #self.sensor_positions:    0     1     2    3     4     5    6     7    8     9    10    11    12   13    14   15    16    17   18    19    20   21    22   23    24 
@@ -155,7 +178,7 @@ class HexagonSensorVisualizer(QMainWindow):
         
         # 创建散点图项（传感器点） # 性能优化：预创建散点图项对象池
         self.scatter_plot = pg.ScatterPlotItem(
-            pos=np.array(self.sensor_positions),
+            pos=self.sensor_positions.reshape(-1, 2),  # 将二维数组展平为N x 2的形状
             size=25,
             pen=pg.mkPen('#ffffff', width=2.5),
             brush=pg.mkBrush(255, 255, 255, 180),
@@ -204,7 +227,7 @@ class HexagonSensorVisualizer(QMainWindow):
         def _get_hexagon_vertices(center_x, center_y):
             vertices = []
             for i in range(6):
-                angle = 2 * np.pi/6 * i - np.pi/2
+                angle = 2 * np.pi/6 * i
                 x = center_x + self.side_length * np.cos(angle)
                 y = center_y + self.side_length * np.sin(angle)
                 vertices.append((x, y))
@@ -213,15 +236,32 @@ class HexagonSensorVisualizer(QMainWindow):
         self.hexagon_items = []
         
         for idx, (cx, cy) in enumerate(self.hexagon_centers):
-            # 获取六边形顶点
-            vertices = _get_hexagon_vertices(cx, cy)
-            
-            # 闭合六边形
-            vertices.append(vertices[0])
-            
-            # 转换为numpy数组
-            vertices_array = np.array(vertices)
-            
+            # 如果是中心镜（镜0），绘制半径为1米的圆形
+            if idx == 0:
+                # 绘制圆形
+                angles = np.linspace(0, 2*np.pi, 100)
+                circle_x = cx + 0.5 * np.cos(angles)
+                circle_y = cy + 0.5 * np.sin(angles)
+                
+                circle = pg.PlotDataItem(
+                    circle_x, circle_y,
+                    pen=pg.mkPen('#cccccc', width=2, style=Qt.SolidLine),
+                    #pen=pg.mkPen('#4CAF50', width=2, style=Qt.SolidLine),
+                    connect='all'
+                )
+                self.main_plot.addItem(circle)
+                self.hexagon_items.append(circle)
+                
+                # 添加圆形中心标签
+                circle_text = pg.TextItem(f"子镜{idx}", color='#ffaa00', anchor=(0.5, 0.5))
+                circle_text.setPos(cx, cy)
+                circle_text.setFont(QFont('Arial', 14))
+                self.main_plot.addItem(circle_text)
+                self.hexagon_items.append(circle_text)
+                continue  # 跳过中心镜的六边形绘制
+            vertices = _get_hexagon_vertices(cx, cy)   # 获取六边形顶点         
+            vertices.append(vertices[0])               # 闭合六边形: 添加第一个顶点到末尾
+            vertices_array = np.array(vertices)        # 转换为numpy数组
             # 创建六边形边界
             hex_line = pg.PlotDataItem(
                 vertices_array[:, 0], 
@@ -233,7 +273,7 @@ class HexagonSensorVisualizer(QMainWindow):
             self.hexagon_items.append(hex_line)
             
             # 添加六边形中心标签
-            text = pg.TextItem(f"子镜2", color='#4CAF50', anchor=(0.5, 1.5))
+            text = pg.TextItem(f"子镜{idx}", color='#4CAF50', anchor=(0.5, 1.5))
             text.setPos(cx, cy)
             text.setFont(QFont('Arial', 15))
             self.main_plot.addItem(text)
@@ -254,7 +294,32 @@ class HexagonSensorVisualizer(QMainWindow):
         
         # 分隔线
         layout.addWidget(self.create_h_line())
+
+        # 视图控制
+        view_group = QGroupBox("视图控制")
+        view_layout = QVBoxLayout()
         
+        restore_btn = QPushButton("还原视图 (恢复初始缩放)")
+        restore_btn.clicked.connect(self.restore_initial_view)
+        restore_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 5px;")
+        view_layout.addWidget(restore_btn)
+        
+        view_info = QLabel("视图控制说明:")
+        view_info.setStyleSheet("font-weight: bold; color: #cccccc;")
+        view_layout.addWidget(view_info)
+        
+        view_instructions = QLabel(
+            "• 鼠标滚轮: 缩放视图\n"
+            "• 鼠标拖动: 平移视图\n"
+            "• 右键拖动: 框选放大\n"
+            "• 双击: 自动缩放到适合\n"
+            "• 点击上方按钮还原初始视图"
+        )
+        view_instructions.setStyleSheet("color: #999999; font-size: 10pt;")
+        view_layout.addWidget(view_instructions)
+        
+        view_group.setLayout(view_layout)
+        layout.addWidget(view_group)
         
         # 数据更新频率
         freq_group = QGroupBox("更新设置")
@@ -337,8 +402,8 @@ class HexagonSensorVisualizer(QMainWindow):
         mirror_stats_layout = QVBoxLayout(mirror_stats_widget)
         
         self.mirror_stats_labels = []
-        for i in range(1):  # 只有1个子镜有传感器
-            mirror_group = QGroupBox(f"子镜")  # 从镜开始
+        for i in range(self.mirror_count):  # 只有6个边缘子镜有传感器
+            mirror_group = QGroupBox(f"边缘子镜{i+1}")  # 从镜1开始
             mirror_group_layout = QVBoxLayout()
             
             min_label = QLabel("最小值: --")
@@ -437,8 +502,9 @@ class HexagonSensorVisualizer(QMainWindow):
         """更新模拟数据"""
         for i in range(25):
             change = np.random.normal(0, 1.5)
-            self.sensor_data[i] = self.sensor_data[i] + change
-    
+            for (i, j), val in np.ndenumerate(self.sensor_data):
+                self.sensor_data[i][j] = val + change
+
     def update_visualization(self):
         """更新可视化"""
         if self.cmap_combo is None:
@@ -456,24 +522,24 @@ class HexagonSensorVisualizer(QMainWindow):
 
     async def update_scatter(self):
         if not self.current_text_items:
-            for i, (x, y) in enumerate(self.sensor_positions): # i 就是传感器的物理位置，对应文件setting/Actuator_Mapping.csv中的actuator_id（i = actuator_id）
-                value = self.sensor_data[i]
-                point = self.scatter_plot.points()[i]
-                if i%25%2 == 1:  # 外圈点用方形，内圈点用圆形
+            for (i,j), (x, y) in np.ndenumerate(self.sensor_positions): # i表示镜子id,j表示传感器相对该子镜的编号， i*25+j就是传感器的物理位置，对应文件setting/Actuator_Mapping.csv中的actuator_id（i = actuator_id）
+                value = self.sensor_data[i][j]
+                point = self.scatter_plot.points()[i][j]
+                if i%25%2:  # 外圈点用方形，内圈点用圆形
                     point.setSymbol('s')
                 text = pg.TextItem(f"{value:.1f}", anchor=(0.5, 0.5))
                 text.setPos(x, y - 0.12)
                 text.setColor('#ffffff')
                 text.setFont(QFont('Arial', 14))
                 self.main_plot.addItem(text)
-                self.current_text_items.append(text)
+                self.current_text_items[i][j] = text
             self.scatter_plot.update()
 
         while True:
             self.update_global_statistics()
             self.update_mirror_statistics()
-            for i, text_item in enumerate(self.current_text_items): # i 就是传感器的物理位置
-                value = self.sensor_data[i]
+            for (i,j), text_item in np.ndenumerate(self.current_text_items): 
+                value = self.sensor_data[i][j]
                 text_item.setText(f"{value:.1f}")
 
                 if np.isnan(value):
@@ -484,7 +550,7 @@ class HexagonSensorVisualizer(QMainWindow):
                         return normalized
                     normalized = normalize(value)
                     color = self.current_colormap.mapToQColor(normalized)
-                point = self.scatter_plot.points()[i]
+                point = self.scatter_plot.points()[i][j]
                 point.setBrush(color)
                 visible = not (self.filter_enabled and value < self.threshold)
                 point.setVisible(visible)
@@ -492,55 +558,6 @@ class HexagonSensorVisualizer(QMainWindow):
                 
             self.scatter_plot.update()
             await asyncio.sleep(2)  # 1秒更新一次
-    
-    # 未被调用    
-    def update_hexagon_connections(self, filter_enabled: bool, threshold: float):
-        """更新六边形连接线"""
-        if not self.connection_lines:
-            self.create_hexagon_connections()
-        
-        line_index = 0
-        # 注意：现在只有6个子镜有传感器
-        for hex_idx in range(1, 2):  # 从镜2开始（索引1）
-            sensor_indices = list(range((hex_idx-1) * 12, hex_idx * 12))
-            
-            for i in range(12):
-                idx1 = sensor_indices[i]
-                idx2 = sensor_indices[(i + 1) % 12]
-                
-                if filter_enabled:
-                    visible1 = bool(self.sensor_data[idx1] > threshold)
-                    visible2 = bool(self.sensor_data[idx2] > threshold)
-                else:
-                    visible1 = visible2 = True
-                
-                if line_index < len(self.connection_lines):
-                    line = self.connection_lines[line_index]
-                    line.setVisible(visible1 and visible2)
-                    line_index += 1
-        
-        for i in range(line_index, len(self.connection_lines)):
-            self.connection_lines[i].setVisible(False)
-    
-    def create_hexagon_connections(self):
-        """创建六边形连接线"""
-        for hex_idx in range(1, 7):  # 从镜2开始
-            sensor_indices = list(range((hex_idx-1) * 12, hex_idx * 12))
-            
-            for i in range(12):
-                idx1 = sensor_indices[i]
-                idx2 = sensor_indices[(i + 1) % 12]
-                
-                x1, y1 = self.sensor_positions[idx1]
-                x2, y2 = self.sensor_positions[idx2]
-                
-                line = pg.PlotDataItem(
-                    [x1, x2], [y1, y2],
-                    pen=pg.mkPen('#666666', width=0.8, style=Qt.DashLine),
-                    connect='all'
-                )
-                self.main_plot.addItem(line)
-                self.connection_lines.append(line)
     
     def update_global_statistics(self):
         """更新全局统计数据"""
@@ -555,7 +572,7 @@ class HexagonSensorVisualizer(QMainWindow):
         if not self.mirror_stats_labels:
             return
         
-        for mirror_idx in range(1):  # 只有1个子镜
+        for mirror_idx in range(self.mirror_count):  # 只有6个边缘子镜
             start_idx = mirror_idx * 25
             end_idx = start_idx + 25
             mirror_data = self.sensor_data[start_idx:end_idx]
@@ -602,11 +619,12 @@ class HexagonSensorVisualizer(QMainWindow):
                     writer = csv.writer(csvfile)
                     writer.writerow(['传感器ID', '子镜编号', 'X坐标(米)', 'Y坐标(米)', '数值', '状态'])
                     
-                    for i, (x, y) in enumerate(self.sensor_positions):
-                        value = self.sensor_data[i]
+                    # for i, (x, y) in enumerate(self.sensor_positions):
+                    for (i,j), (x,y) in np.ndenumerate(self.sensor_positions):
+                        value = self.sensor_data[i][j]
                         threshold = self.threshold_slider.value() if self.threshold_slider else 80
                         status = "正常" if value <= threshold else "异常"
-                        writer.writerow([i+1, 0, f"{x:.3f}", f"{y:.3f}", f"{value:.3f}", status])
+                        writer.writerow([i*25+j, 0, f"{x:.3f}", f"{y:.3f}", f"{value:.3f}", status])
                 
                 QMessageBox.information(self, "成功", f"72个传感器数据已导出到:\n{filename}")
             except Exception as e:
@@ -641,16 +659,13 @@ class HexagonSensorVisualizer(QMainWindow):
         # 存储子镜分组控件
         self.test_dialog_groups = []
         
-        actuators_per_mirror = 25   # 每个子镜的促动器数量（根据原代码布局）
-        num_mirrors = 1             # 周围子镜数量
-
         # 为每个子镜创建分组框
-        for mirror_idx in range(num_mirrors):
-            start_idx = mirror_idx * actuators_per_mirror
-            end_idx = start_idx + actuators_per_mirror
+        for mirror_idx in range(self.mirror_count):  # 只有6个边缘子镜有促动器
+            start_idx = mirror_idx * self.actuators_per_mirror
+            end_idx = start_idx + self.actuators_per_mirror
             actuator_indices = list(range(start_idx, end_idx))  # 物理位置的id
 
-            group_box = QGroupBox(f"子镜 （促动器 {start_idx+1} ~ {end_idx}）")
+            group_box = QGroupBox(f"子镜{mirror_idx+1} （促动器 {start_idx} ~ {end_idx}）")
             group_layout = QVBoxLayout(group_box)
 
             # 子镜全选复选框
@@ -665,7 +680,8 @@ class HexagonSensorVisualizer(QMainWindow):
             self.checkboxes = []
             for i, act_idx in enumerate(actuator_indices):
                 # 促动器编号从1开始显示
-                phy_id = Actuator2Pon_Map[2][act_idx]  # 2号边缘子镜
+                act_idx = act_idx % 25
+                phy_id = Actuator2Pon_Map[mirror_idx+1][act_idx]
                 act_name = f"促动器-{act_idx}({phy_id})"
                 cb = QCheckBox(f"{act_name}")
                 row = i // 8
@@ -750,7 +766,7 @@ class HexagonSensorVisualizer(QMainWindow):
                 if cb.isChecked():
                     act_global_index = group['start_idx'] + i  # 0-based
                     selected_actuators.append(act_global_index)
-                    Mirrors.Target[0][act_global_index] = float(target_force) if not increment_force else (Mirrors.Target[0][act_global_index] + float(increment_force))
+                    Mirrors.Target[group["mirror_idx"]][act_global_index] = float(target_force) if not increment_force else (Mirrors.Target[group["mirror_idx"]][act_global_index] + float(increment_force))
 
         if not selected_actuators:
             QMessageBox.information(dialog, "提示", "未选择任何促动器")
@@ -787,5 +803,7 @@ if __name__ == "__main__":
             loop.create_task(window.monitor_task())
             loop.run_forever()
     except Exception as e:
+        import traceback
+        traceback.print_exc()            # 打印完整堆栈
         print(f"出现异常, e = {str(e)}")
         

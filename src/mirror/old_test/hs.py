@@ -19,8 +19,8 @@ def stop(pid):
 
 
 
-port_file = resources.files("mirror.mirror_control").joinpath("settings/Domestic_Amplifier_Mapping.csv") if self.is_domestic else resources.files("mirror.mirror_control").joinpath("settings/Imported_Amplifier_Mapping.csv")
-amplifers = _load_hardware_config(port_file, col=1, defaults=DEFAULT_AMP_PORTS)
-
 if __name__ == "__main__":
-    cli()
+    import numpy as np
+    lis = [[1, 2],[3, 4]]
+    arr = np.asarray(lis)
+    print(arr)

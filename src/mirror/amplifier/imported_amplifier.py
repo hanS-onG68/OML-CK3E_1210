@@ -20,7 +20,7 @@ class Amplifier:
         if self.com and self.com.transmissionIsRunning:
             self.com.StopTransmission()
 
-    def read_data(self):
+    async def read_data(self):
         """获取GSV8-DS的一组数据"""
         if not self.com or not self.com.transmissionIsRunning:
             raise RuntimeError(f"Group[{self.group_id}]: is not READY")

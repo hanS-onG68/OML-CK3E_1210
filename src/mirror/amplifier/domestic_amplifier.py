@@ -110,11 +110,11 @@ class Amplifier:  # 国产放大器
                 return None     
     
     # 上层调用接口，获取设备8个通道的测量值
-    def read_data(self):
-        val = self.read_channels_measure()
+    async def read_data(self):
+        val = await self.read_channels_measure()
+        values = []
         if val is not None:
             logger.info(f"当前测量值: {val}")
-            values = []
             values.append(val["channel_1"])
             values.append(val["channel_2"])
             values.append(val["channel_3"])
@@ -129,7 +129,7 @@ class Amplifier:  # 国产放大器
             return result
         else:
             logger.error("获取测量值失败，返回None")
-            return None
+            return (self.host,  datetime.now(), values)
 
 
     # 本地调用接口，循环测试单个放大器的8个通道
