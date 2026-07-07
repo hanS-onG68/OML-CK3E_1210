@@ -54,7 +54,7 @@ class Mirrors:
         self.Available = np.full((MIRRORS_COUNT, ACTUATORS_PER_MIRROR), False, dtype=bool)
 
         Mirrors.Target.fill(15.0)
-        self.Available[0, :] = True
+        self.Available[1, :] = True    # 选择几号边缘子镜
 
 
         # 映射索引

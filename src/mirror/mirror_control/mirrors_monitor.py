@@ -48,12 +48,15 @@ class HexagonSensorVisualizer(QMainWindow):
         
         # 性能优化：预创建对象池
         self.connection_lines = []
-        self.current_text_items = np.empty((self.mirror_count, self.actuators_per_mirror), dtype=object)  # 用于显示传感器数值的文本项
         self.hexagon_items = []
         
         # 分子镜统计标签
         self.mirror_stats_labels = []
-        
+        self.mir_enabled = np.full(shape=self.mirror_count, fill_value=False)   # 用于存储每个边缘子镜的启用状态
+        self.mir_check = np.empty(shape=self.mirror_count, dtype=object)     # 用于存储每个边缘子镜的复选框
+        self.visible_mask = np.full(shape=(self.mirror_count, self.actuators_per_mirror), fill_value=False)   # 用于存储每个边缘子镜的可见性状态
+    
+
         # 当前颜色映射
         self.current_colormap = pg.colormap.get('viridis')
         
@@ -63,6 +66,9 @@ class HexagonSensorVisualizer(QMainWindow):
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_simulation_data)
         
+        # 初始化
+        self.initialize_scatter_textItem()
+
         # 保存初始视图范围
         self.save_initial_view_range()
 
@@ -372,7 +378,17 @@ class HexagonSensorVisualizer(QMainWindow):
         self.threshold_label = QLabel("80")
         threshold_layout.addWidget(self.threshold_label)
         filter_layout.addLayout(threshold_layout)
-        
+
+            # 调测使用
+        mir_sub_layout = QHBoxLayout()
+        mir_sub_layout.addWidget(QLabel("要显示的子镜:"))
+        for mir_idx in range(self.mirror_count):
+            self.mir_check[mir_idx] = QCheckBox(f"子镜{mir_idx+1}")
+            self.mir_check[mir_idx].stateChanged.connect(self.update_visualization)
+            mir_sub_layout.addWidget(self.mir_check[mir_idx])
+        filter_layout.addLayout(mir_sub_layout)
+
+    
         filter_group.setLayout(filter_layout)
         layout.addWidget(filter_group)
         
@@ -517,29 +533,58 @@ class HexagonSensorVisualizer(QMainWindow):
                 self.threshold_label.setText(str(self.threshold))
         
         self.filter_enabled = False
-        if self.filter_check:  # 异常传感器
+        if self.filter_check:  # 异常传感器的复选框是否创建成功
             self.filter_enabled = self.filter_check.isChecked()
 
-    async def update_scatter(self):
-        if not self.current_text_items:
-            for (i,j), (x, y) in np.ndenumerate(self.sensor_positions): # i表示镜子id,j表示传感器相对该子镜的编号， i*25+j就是传感器的物理位置，对应文件setting/Actuator_Mapping.csv中的actuator_id（i = actuator_id）
-                value = self.sensor_data[i][j]
-                point = self.scatter_plot.points()[i][j]
-                if i%25%2:  # 外圈点用方形，内圈点用圆形
-                    point.setSymbol('s')
-                text = pg.TextItem(f"{value:.1f}", anchor=(0.5, 0.5))
-                text.setPos(x, y - 0.12)
-                text.setColor('#ffffff')
-                text.setFont(QFont('Arial', 14))
-                self.main_plot.addItem(text)
-                self.current_text_items[i][j] = text
-            self.scatter_plot.update()
+        for mir_idx in range(self.mirror_count):
+            if self.mir_check[mir_idx]:
+                self.mir_enabled[mir_idx] = self.mir_check[mir_idx].isChecked()
+                self.visible_mask[mir_idx] = self.mir_enabled[mir_idx]
 
+
+    def initialize_scatter_textItem(self):
+        """初始化传感器数值文本项"""
+        self.current_text_items = np.empty((self.mirror_count, self.actuators_per_mirror), dtype=object)  # 用于显示传感器数值的文本项
+        sensor_positions = self.sensor_positions.reshape(-1, 2)  # 展平为150 x 2的形状
+        for idx, (x, y) in enumerate(sensor_positions):
+            i, j = idx // self.actuators_per_mirror, idx % self.actuators_per_mirror   # i表示镜子id,j表示传感器相对该子镜的编号， i*25+j就是传感器的物理位置，对应文件setting/Actuator_Mapping.csv中的actuator_id（i = actuator_id）
+            value = self.sensor_data[i, j]
+            point = self.scatter_plot.points()[idx]
+            if idx%25%2:  # 外圈点用方形，内圈点用圆形
+                point.setSymbol('s')
+            text = pg.TextItem(f"{value:.1f}", anchor=(0.5, 0.5))
+            text.setPos(x, y - 0.12)
+            text.setColor('#ffffff')
+            text.setFont(QFont('Arial', 14))
+            self.main_plot.addItem(text)
+            self.current_text_items[i, j] = text
+        self.scatter_plot.update()
+    
+    async def update_mirror_visibility(self):
+        while True:
+            for mirror_idx in range(self.mirror_count):
+                mirror_enabled = getattr(self, f'mir{mirror_idx+1}_enabled', False)
+                for j in range(self.actuators_per_mirror):
+                    point = self.scatter_plot.points()[mirror_idx * self.actuators_per_mirror + j]
+                    text_item = self.current_text_items[mirror_idx, j]
+                    if mirror_enabled:
+                        point.setVisible(True)
+                        text_item.setVisible(True)
+                    else:
+                        point.setVisible(False)
+                        text_item.setVisible(False)
+            await asyncio.sleep(0.5)  # 每0.5秒检查一次
+    
+    async def update_scatter(self):
         while True:
             self.update_global_statistics()
             self.update_mirror_statistics()
-            for (i,j), text_item in np.ndenumerate(self.current_text_items): 
-                value = self.sensor_data[i][j]
+            self.scatter_plot.setPointsVisible(self.visible_mask.ravel().tolist())
+            for (i, j), text_item in np.ndenumerate(self.current_text_items):
+                if not self.visible_mask[i, 0]:   # 当前的子镜是否可见
+                    [item.setVisible(False) for item in self.current_text_items[i, :]]  # 隐藏该子镜的所有传感器文本项
+                    continue
+                value = self.sensor_data[i, j]
                 text_item.setText(f"{value:.1f}")
 
                 if np.isnan(value):
@@ -550,14 +595,13 @@ class HexagonSensorVisualizer(QMainWindow):
                         return normalized
                     normalized = normalize(value)
                     color = self.current_colormap.mapToQColor(normalized)
-                point = self.scatter_plot.points()[i][j]
+                point = self.scatter_plot.points()[i * self.actuators_per_mirror + j]
                 point.setBrush(color)
                 visible = not (self.filter_enabled and value < self.threshold)
-                point.setVisible(visible)
+                point.setVisible(visible)  # visible 为 True 时，该数据点会在界面上正常显示
                 text_item.setVisible(visible)
-                
             self.scatter_plot.update()
-            await asyncio.sleep(2)  # 1秒更新一次
+            await asyncio.sleep(0.2)  # 0.2秒更新一次
     
     def update_global_statistics(self):
         """更新全局统计数据"""
@@ -573,9 +617,7 @@ class HexagonSensorVisualizer(QMainWindow):
             return
         
         for mirror_idx in range(self.mirror_count):  # 只有6个边缘子镜
-            start_idx = mirror_idx * 25
-            end_idx = start_idx + 25
-            mirror_data = self.sensor_data[start_idx:end_idx]
+            mirror_data = self.sensor_data[mirror_idx, :]
             
             if len(mirror_data) > 0:
                 min_val = mirror_data.min()
@@ -603,7 +645,7 @@ class HexagonSensorVisualizer(QMainWindow):
     
     def reset_data(self):
         """重置数据"""
-        self.sensor_data = np.random.uniform(0, 100, self.sensor_count)
+        self.sensor_data = np.zeros(shape=(self.mirror_count, self.actuators_per_mirror))
         self.update_visualization()
     
     def export_data(self):
@@ -620,11 +662,13 @@ class HexagonSensorVisualizer(QMainWindow):
                     writer.writerow(['传感器ID', '子镜编号', 'X坐标(米)', 'Y坐标(米)', '数值', '状态'])
                     
                     # for i, (x, y) in enumerate(self.sensor_positions):
-                    for (i,j), (x,y) in np.ndenumerate(self.sensor_positions):
-                        value = self.sensor_data[i][j]
+                    sensor_positions = self.sensor_positions.reshape(-1, 2)  # 展平为150 x 2的形状
+                    for idx, (x, y) in enumerate(sensor_positions):
+                        i, j = idx // self.actuators_per_mirror, idx % self.actuators_per_mirror   # i表示镜子id,j表示传感器相对该子镜的编号， i*25+j就是传感器的物理位置，对应文件setting/Actuator_Mapping.csv中的actuator_id（i = actuator_id）
+                        value = self.sensor_data[i, j]
                         threshold = self.threshold_slider.value() if self.threshold_slider else 80
                         status = "正常" if value <= threshold else "异常"
-                        writer.writerow([i*25+j, 0, f"{x:.3f}", f"{y:.3f}", f"{value:.3f}", status])
+                        writer.writerow([idx, 0, f"{x:.3f}", f"{y:.3f}", f"{value:.3f}", status])
                 
                 QMessageBox.information(self, "成功", f"72个传感器数据已导出到:\n{filename}")
             except Exception as e:
