@@ -87,7 +87,6 @@ class OneMotorTest:
                     await file.write(f"{i},{step},{force}\n")
             self.logger.info(f"\n✅ 所有数据已保存到: {filename}")
             self.logger.info(f"📊 共保存 {len(self.data_pairs)} 行数据")
-            # DataAnalyzer(filename).plot(y_col='Steps', x_col='Force_Value')
             # 绘图逻辑如果是同步的，放在线程池里跑避免阻塞,替换原来的同步调用，绘图放到线程池执行
             loop = asyncio.get_running_loop()
             try:
@@ -112,11 +111,22 @@ class OneMotorTest:
         loop = asyncio.get_running_loop() # 新增：获取当前事件循环
         while not self._stop_event.is_set():
             try:
-                # res = self.amplifier.read_data()
-                # 替换原来的res = self.amplifier.read_data()，放到线程池执行
-                res = await loop.run_in_executor(None, self.amplifier.read_data)
+                try:
+                    res = await asyncio.wait_for(
+                        self.amplifier.read_data(),
+                        timeout=1.0
+                    )
+                except asyncio.TimeoutError:
+                    self.logger.error(f"读取超时，继续...")
+                    continue
+                except Exception as e:
+                    self.logger.error(f"Sensor-reading error: {str(e)}")
+                    break
                 timestamp = res[1].strftime("%Y-%m-%dT%H:%M:%S.%f")
                 sensor_values = res[2]
+                if not sensor_values:
+                    self.logger.error(f"Sensor reading info is null")
+                    continue
 
                 self.channel_vals = sensor_values             # 更新通道值列表
                 self.val = sensor_values[self.sensor_id - 1]  # 获取对应电机的传感器通道值
@@ -124,7 +134,7 @@ class OneMotorTest:
                 print(f"[{timestamp[:-5]}]: chan{self.sensor_id}_val={self.val}\n")
                 await asyncio.sleep(1)
             except Exception as e:
-                self.logger.error(f"Sensor reading error: {e}")
+                self.logger.error(f"Sensor reading error: {str(e)}")
 
     async def safety_monitor(self):
         """安全监控任务"""
@@ -136,13 +146,13 @@ class OneMotorTest:
             await asyncio.sleep(0.01) # 10ms轮询，不占CPU
     
     def signal_handler(self, loop):
-        self.logger.info("\n接收到关闭信号，正在退出...")
+        self.logger.info("\n接收到关闭信号，停止当前电机，正在退出...")
         self._stop_event.set()  # 设置停止信号
-        # 取消所有任务
-        for task in asyncio.all_tasks():
-            task.cancel()
-        loop.call_later(0.1, loop.stop)
-        loop.close()
+        # # 取消所有任务
+        # for task in asyncio.all_tasks():
+        #     task.cancel()
+        # loop.call_later(0.1, loop.stop)
+        # loop.close()
     
     async def run_test(self, motor_start, motor_stop, motor_step):
         sensor_task = None
@@ -155,9 +165,7 @@ class OneMotorTest:
             loop.add_signal_handler(sig, self.signal_handler, loop)
 
         try:
-            # async with PMAC_Controller() as self.pmac:
-            #     if not self.pmac.is_connected:
-            #         await self.pmac.connect()
+                await self.pmac.connect()
                 try:
                     sensor_task = asyncio.create_task(self.get_sensor_data())
                     safety_task = asyncio.create_task(self.safety_monitor())

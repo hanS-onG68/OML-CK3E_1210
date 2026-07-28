@@ -54,7 +54,7 @@ class HexagonSensorVisualizer(QMainWindow):
         self.mirror_stats_labels = []
         self.mir_enabled = np.full(shape=self.mirror_count, fill_value=False)   # 用于存储每个边缘子镜的启用状态
         self.mir_check = np.empty(shape=self.mirror_count, dtype=object)     # 用于存储每个边缘子镜的复选框
-        self.visible_mask = np.full(shape=(self.mirror_count, self.actuators_per_mirror), fill_value=False)   # 用于存储每个边缘子镜的可见性状态
+        self.visible_mask = np.full(shape=(self.mirror_count, self.actuators_per_mirror), fill_value=False)   # 用于存储每个边缘子镜的可见性状态,默认都不可见
     
 
         # 当前颜色映射

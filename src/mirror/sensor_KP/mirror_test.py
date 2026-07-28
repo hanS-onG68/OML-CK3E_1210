@@ -84,12 +84,13 @@ class MirrorsTest:
         return dev_info
     
     async def get_sensor_reader(self, amp_info):
-        loop = asyncio.get_running_loop()
+        # loop = asyncio.get_running_loop()
         if self.is_domestic:
-            sensor_reader = await loop.run_in_executor(None, DomesticAmplifier, amp_info["ip"])  # 国产放大器
-            amplifier_id = amp_info["amp_id"]   # 国产放大器
+            sensor_reader = DomesticAmplifier(amp_info["ip"])  # 国产放大器
+            await sensor_reader.connect()
+            amplifier_id = amp_info["amp_id"]
             return amplifier_id, sensor_reader
-        sensor_reader = await loop.run_in_executor(None, ImportedAmplifier, amp_info, 3, 1.0)  # 进口放大器
+        sensor_reader = ImportedAmplifier(amp_info, 3, 1.0)    # 进口放大器
         amplifier_id = int(amp_info[9:])
         return amplifier_id, sensor_reader
     
@@ -104,35 +105,34 @@ class MirrorsTest:
             except Exception as e:
                 self.logger.error(f"❌ 电机{motor_test.motor_id}测试失败: {str(e)}，已安全停转")
     
-        # sensor = SensorReader(path=amplifier, group_id=3, datarate=1.0)   # 一个放大器上的8个通道共用一个读取器
         amplifier_id, sensor_reader = await self.get_sensor_reader(amp_info)
-        pmac_controler = None
+        pmac = None
         try:
             matched = self.df[(self.df['Amplifier_id'] == amplifier_id)]
             if matched.empty:
                 self.logger.error(f"❌ 放大器{amplifier_id}未找到匹配记录，跳过当前放大器所有测试")
                 return # 仅跳过当前放大器，不影响其他放大器
             Pmac_Controler_id = matched['Pmac_Controler_id'].values[0]
-            pmac_controler = Id2Controler[Pmac_Controler_id]
+            pmac = Id2Controler[Pmac_Controler_id]
         except Exception as e:
             self.logger.error(f"❌ 放大器{amplifier_id}初始化失败: {str(e)}，跳过当前放大器")
             return # 仅跳过当前放大器
 
         try:
-            async with pmac_controler as pmac:
-                tasks = []
-                if not pmac.is_connected:
-                    await pmac.connect()
-                for channel_id in range(1, 9):
-                    if self.df[(self.df['Amplifier_id'] == amplifier_id) & (self.df['Channel_id'] == channel_id)]['Motor_id'].values[0] == -1:  # 放大器通道未连接电机
-                        continue
-                    motor = OneMotorTest(amplifier_id, channel_id, sensor_reader, pmac, self.df)    # 测试传感器对应的电机
-                    task = asyncio.create_task(_wrap_motor_test(motor))
-                    tasks.append(task)
-                await asyncio.gather(*tasks, return_exceptions=True)
-                self.logger.info(f"✅ 放大器{amplifier_id}所有通道测试完成")
+            tasks = []
+            for channel_id in range(1, 9):
+                if self.df[(self.df['Amplifier_id'] == amplifier_id) & (self.df['Channel_id'] == channel_id)]['Motor_id'].values[0] == -1:  # 放大器通道未连接电机
+                    continue
+                motor = OneMotorTest(amplifier_id, channel_id, sensor_reader, pmac, self.df)    # 测试传感器对应的电机
+                task = asyncio.create_task(_wrap_motor_test(motor))
+                tasks.append(task)
+            await asyncio.gather(*tasks, return_exceptions=True)
+            self.logger.info(f"✅ 放大器{amplifier_id}所有通道测试完成")
         except Exception as e:
             self.logger.error(f"❌ 放大器测试出现异常: {str(e)}")
+        finally:
+            if sensor_reader:
+                del sensor_reader
 
     async def main(self):
         async def _wrap_amp_test(amp_info):       # 给每个放大器任务也加一层异常隔离，单个放大器异常不影响其他
@@ -147,7 +147,7 @@ class MirrorsTest:
             return
         try:
             tasks = []
-            self.logger.info(f"✅ 找到ttyr设备: {[amplifier for amplifier in amplifier_info_list]}")
+            self.logger.info(f"✅ 找到放大器设备: {[amplifier for amplifier in amplifier_info_list]}")
             for amp_info in amplifier_info_list:         # 测试设备上的所有放大器
                 task = asyncio.create_task(_wrap_amp_test(amp_info))
                 tasks.append(task)
@@ -155,17 +155,43 @@ class MirrorsTest:
         except Exception as e:
             self.logger.error(f"程序出现异常，err_code: {str(e)}")
         finally:
-            import os
-            os._exit(0)
+           # 优雅关闭
+            for controller in Id2Controler.values():
+                await controller.disconnect()
+    async def __aenter__(self):
+        """连接所有 PMAC 控制器"""
+        self.logger.info("🔌 正在连接所有 PMAC 控制器...")
+        for pmac_id, pmac in Id2Controler.items():
+            try:
+                if not pmac.is_connected:
+                    await pmac.connect()
+                self.logger.info(f"✅ PMAC {pmac_id} 已连接")
+            except Exception as e:
+                self.logger.error(f"❌ PMAC {pmac_id}, 连接失败: {e}")
+        return self
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """断开所有 PMAC 并清理资源"""
+        self.logger.info("🔌 正在断开所有 PMAC 控制器...")
+        for pmac_id, pmac in Id2Controler.items():
+            try:
+                if pmac.is_connected:
+                    await pmac.disconnect()
+                self.logger.info(f"✅ PMAC {pmac_id} 已断开")
+            except Exception as e:
+                self.logger.error(f"❌ PMAC {pmac_id} 断开失败: {e}")
+        
+        # 关闭绘图进程池
+        self.logger.info("📊 关闭绘图进程池...")
+        GLOBAL_PLOT_POOL.shutdown(wait=True)
+        return False
                 
 
 if __name__ == "__main__":
+    async def sensor_test():
+        async with MirrorsTest(is_domestic=True) as test:
+            await test.main()
     try:
-        asyncio.run(MirrorsTest(is_domestic=True).main())
+        asyncio.run(sensor_test())
     except Exception as e:
         print(f"程序出现异常，正在退出..., {e}")
-        pass
-    finally:
-        GLOBAL_PLOT_POOL.shutdown()
-        print(f"kp = {kp}")
 

@@ -52,7 +52,7 @@ class Amplifier:  # 国产放大器
         """异步断开连接释放资源"""
         if self.client and self.client.connected:
             self.client.close()
-            logger.info("设备连接已关闭")
+            logger.info(f"设备_{self.host} 连接已关闭")
 
     async def get_val_by_channel(self, index: int, reg_pair: list, results: Dict[str, float]) -> None:
         decoder = BinaryPayloadDecoder.fromRegisters(
@@ -79,11 +79,17 @@ class Amplifier:  # 国产放大器
         reg_count = 16  # 32位浮点数占2个连续寄存器, 8个通道共16个寄存器
 
         try: # 使用03H功能码读取保持寄存器
-            response = await self.client.read_holding_registers(
-                address=start_addr,
-                count=reg_count,
-                slave=self.slave_id  # 通讯地址默认为01
-            )
+            try:
+                response = await asyncio.wait_for(self.client.read_holding_registers(
+                        address=start_addr,
+                        count=reg_count,
+                        slave=self.slave_id  # 通讯地址默认为01
+                    ),
+                    timeout=2.0 # 读取时间设置成2秒
+                )
+            except asyncio.TimeoutError:
+                logger.error("读取超时！")
+                return None
 
             if response.isError():
                 logger.error(f"读取失败: {response}")
@@ -95,12 +101,17 @@ class Amplifier:  # 国产放大器
                 tasks = []
                 for index in range(0, len(response.registers), 2):
                     reg_pair = response.registers[index:index+2]
-                    task = asyncio.create_task(self.get_val_by_channel(index, reg_pair, results))
-                    tasks.append(task)
-                await asyncio.gather(*tasks)
+                    decoder = BinaryPayloadDecoder.fromRegisters(reg_pair, byteorder=Endian.BIG, wordorder=Endian.BIG)
+                    val = decoder.decode_32bit_float()
+                    channel = int(index / 2 + 1)
+                    logger.info(f"通道{channel}测量值: {val:.4f}")
+                    results[f"channel_{channel}"] = val
+                    # task = asyncio.create_task(self.get_val_by_channel(index, reg_pair, results))
+                    # tasks.append(task)
+                # await asyncio.gather(*tasks)
                 return results
             except Exception as e:
-                logger.error(f"数据解析异常: {e}", exc_info=True)
+                logger.error(f"数据解析异常: {str(e)}", exc_info=True)
                 return None
         except ModbusException as e:
                 logger.error(f"Modbus协议错误: {str(e)}")
@@ -146,7 +157,14 @@ class Amplifier:  # 国产放大器
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.disconnect()
         self.stop_event.set()  # 停止循环
-        return False    # 返回 False：不抑制异常（如果业务逻辑出错，会正常抛出）
+        return False           # 返回 False：不抑制异常（如果业务逻辑出错，会正常抛出）
+
+    def __del__(self):
+        if self.client and self.client.connected:
+            self.client.close()
+            logger.info(f"设备_{self.host} 连接已关闭")
+        self.stop_event.set()  # 停止循环
+
 
 if __name__ == "__main__":
     """
@@ -177,7 +195,7 @@ if __name__ == "__main__":
     }
 
     async def main():
-        async with DomesticAmplifier(**params) as reader:
+        async with Amplifier(**params) as reader:
             await reader.display_all_channels()
 
     asyncio.run(main())
