@@ -25,11 +25,11 @@ import json,os
 from mirror.sensor_KP.excel_generator import ExcelDataHandler
 
 # 6个子镜对应6个pmac控制器
-config0 = SSH_Config()
-pmac_controler0 = PMAC_Controller(config0)
+# config0 = SSH_Config()
+# pmac_controler0 = PMAC_Controller(config0)
 
-# config1 = SSH_Config(host = "192.168.0.201")
-# pmac_controler1 = PMAC_Controller(config1)
+config1 = SSH_Config(host = "192.168.0.201")
+pmac_controler1 = PMAC_Controller(config1)
 
 # config2 = SSH_Config(host = "192.168.0.202")
 # pmac_controler2 = PMAC_Controller(config2)
@@ -45,8 +45,8 @@ pmac_controler0 = PMAC_Controller(config0)
 
 
 Id2Controler = {
-    "192.168.0.200": pmac_controler0,
-    # "192.168.0.201": pmac_controler1,
+    # "192.168.0.200": pmac_controler0,
+    "192.168.0.201": pmac_controler1,
     # "192.168.0.202": pmac_controler2,
     # "192.168.0.203": pmac_controler3,
     # "192.168.0.204": pmac_controler4,
@@ -93,7 +93,7 @@ class MirrorsTest:
     def get_domestic_amplifier_info(self):  # 国产放大器
         dev_info = []
         start_ip = "192.168.0."  # 起始ip
-        for id in range(101, 102, 1): # 全部需要19个放大器，测试时可根据需要收放
+        for id in range(134, 135, 1): # 全部需要19个放大器，测试时可根据需要收放
             current_ip = start_ip + str(id)
             dev_info.append(current_ip)
         return dev_info
@@ -144,7 +144,7 @@ class MirrorsTest:
             try:
                 await motor_test.run_test(
                     motor_start=0, 
-                    motor_stop=-160000, 
+                    motor_stop=-120000, 
                     motor_step=-5000
                 )
             except Exception as e:

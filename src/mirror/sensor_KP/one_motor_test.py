@@ -171,7 +171,7 @@ class OneMotorTest:
                             break
                         try:
                             await self.pmac.exec_command(f"#{self.motor_id}J={step}")
-                            await asyncio.sleep(5)  # 等待数据稳定
+                            await asyncio.sleep(0.7)  # 等待数据稳定
                             if self._stop_event.is_set():
                                 self.logger.info("🛑 安全监控触发，提前终止等待")
                                 break
