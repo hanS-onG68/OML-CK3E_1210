@@ -85,7 +85,7 @@ class Amplifier:  # 国产放大器
                         count=reg_count,
                         slave=self.slave_id  # 通讯地址默认为01
                     ),
-                    timeout=2.0 # 读取时间设置成2秒
+                    timeout=3.0 # 读取时间设置成3秒
                 )
             except asyncio.TimeoutError:
                 logger.error("读取超时！")
@@ -160,6 +160,16 @@ class Amplifier:  # 国产放大器
         return False           # 返回 False：不抑制异常（如果业务逻辑出错，会正常抛出）
 
     def __del__(self):
+        # 先检查当前事件循环是否还存活
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # 没有正在运行的事件循环，说明程序已经退出、loop已关闭，直接跳过close操作
+            return
+        
+        if loop.is_closed():
+            return
+    
         if self.client and self.client.connected:
             self.client.close()
             logger.info(f"设备_{self.host} 连接已关闭")
@@ -179,7 +189,9 @@ if __name__ == "__main__":
             """程序退出时自动关闭连接到192.168.0.102:502的所有进程"""
             try:
                 # 执行查找并终止进程的命令
-                cmd = "lsof -i TCP | grep '192.168.0.102:502' | awk '{print $2}' | xargs kill -9"
+                # cmd = "lsof -i TCP | grep '192.168.0.13:502' | awk '{print $2}' | xargs kill -9"
+                cmd = "lsof -ti tcp:502 | xargs -r kill -9"
+
                 subprocess.run(cmd, shell=True, check=True)
                 print("✅ 已自动关闭所有目标连接进程")
             except subprocess.CalledProcessError:
@@ -187,7 +199,7 @@ if __name__ == "__main__":
                 print("ℹ️ 未找到目标进程，无需关闭")
     
     params = {
-        "host":     "192.168.0.102" ,   # 设备IP
+        "host":     "192.168.0.104" ,    # 设备IP
         "port":     502,                # Modbus TCP端口，默认502
         "timeout":  3,                  # 连接/响应超时(秒)
         "retries":  3,                  # 重试次数

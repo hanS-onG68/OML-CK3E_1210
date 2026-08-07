@@ -18,6 +18,7 @@ from functools import partial
 import os
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor
+import re
 
 # 自动计算进程池大小，优先用逻辑核的1/3，最小1个，最大不超过8（避免占满CPU影响实时控制）
 LOGIC_CPU_COUNT = os.cpu_count() or 4
@@ -40,44 +41,37 @@ GLOBAL_PLOT_POOL = ProcessPoolExecutor(
 )
 
 # 写到文件顶层，OneMotorTest类外面，全局可导入
-def run_plot_task(filepath: str, x_col: str, y_col: str, sensor_index: int) -> bool:
+def run_plot_task(filepath: str, x_col: str, y_col: str, one_actuator_info: Optional[dict] = None) -> bool:
     """独立绘图任务，进程池可序列化，内部处理异常"""
     try:
-        DataAnalyzer(filepath).plot(x_col, y_col, sensor_index)
-        return True
+        DataAnalyzer(filepath).plot(x_col, y_col, one_actuator_info)
+        return one_actuator_info
     except Exception as e:
         import logging
         logging.warning(f"绘图失败 {filepath}: {str(e)}")
-        return False
+        return None
 
 
 class OneMotorTest:
-    def __init__(self, amplifier_id: int, channel_id: int, amplifier, pmac: Optional[PMAC_Controller], df: Optional[pd.DataFrame]): 
+    def __init__(self, df: Optional[pd.DataFrame], pmac, amplifier, one_actuator_info: Optional[dict] = None):
         self.logger = setup_logger()
-        try:
-            matched = df[(df['Channel_id'] == channel_id) & (df['Amplifier_id'] == amplifier_id)]
-            if matched.empty:
-                raise ValueError(f"未找到匹配的放大器ID {amplifier_id} 和传感器通道 {channel_id} 的记录")
-            self.motor_id = matched['Motor_id'].values[0]
-            if self.motor_id == -1:
-                raise ValueError(f"匹配的放大器ID {amplifier_id} 和传感器通道 {channel_id} 的记录, 不正确！")
-        except Exception as e:
-            self.logger.critical(f"映射表加载失败: {str(e)}")
-            return
+        self.motor_id = one_actuator_info["电机id"]
         self._stop_event = asyncio.Event()
-        self.sensor_id = channel_id  
+        self.sensor_id = one_actuator_info["channel_id"]
         self.data_pairs = []                                   # 存储步数和力值的列表
         self.amplifier = amplifier
         self.channel_vals: List[Optional[float]] = [None] * 8  # 用列表存8个通道值，替代冗余变量
         self.val:Optional[float] = None                        # 当前测试电机对应的传感器通道的值
         self.pmac = pmac
-        self.sensor_index = amplifier_id * 8 + channel_id - 1
-
+        self.sensor_index = one_actuator_info["sensor_index"]  # 表示传感器在全部150个传感器中的索引位置，0~149
+        self.mirror_id = one_actuator_info["mirror_id"]
+        self.one_actuator_info = one_actuator_info
+        self.test_threshold = list(map(float, re.findall(r'-?\d+\.?\d*', one_actuator_info["测试区间"])))
 
     async def save_to_csv(self):
         if self.data_pairs:
-            filename = f"data/motor{self.motor_id}_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-
+            filename = f"mirror{self.mirror_id}_data/motor{self.motor_id}_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        
             async with aiofiles.open(filename, 'w', newline='', encoding='utf-8') as file:
                 writer = csv.writer(file)
                 # 设置表头
@@ -96,11 +90,12 @@ class OneMotorTest:
                     filename,
                     'Force_Value',
                     'Steps',
-                    self.sensor_index
+                    self.one_actuator_info
                 )
-                # 如果不需要等待绘图完成，直接去掉await即可，主测试逻辑直接继续，进一步提升速度
-                # with GLOBAL_PLOT_POOL as executor:
-                await loop.run_in_executor(GLOBAL_PLOT_POOL, plot_task)
+                updated_actuator_info = await loop.run_in_executor(GLOBAL_PLOT_POOL, plot_task)
+                if updated_actuator_info:
+                    print("self.one_actuator_info有更新！")
+                    self.one_actuator_info.update(updated_actuator_info)
             except Exception as e:
                 self.logger.warning(f"⚠️ 绘图失败，不影响测试结果: {str(e)}")
         else:
@@ -112,10 +107,13 @@ class OneMotorTest:
         while not self._stop_event.is_set():
             try:
                 try:
+                    start_time = time.perf_counter()
                     res = await asyncio.wait_for(
                         self.amplifier.read_data(),
-                        timeout=1.0
+                        timeout=4.0
                     )
+                    elapsed_time = time.perf_counter() - start_time
+                    print(f"✅️放大器读取数据成功, 实际耗时: {elapsed_time:.4f} 秒")
                 except asyncio.TimeoutError:
                     self.logger.error(f"读取超时，继续...")
                     continue
@@ -132,32 +130,28 @@ class OneMotorTest:
                 self.val = sensor_values[self.sensor_id - 1]  # 获取对应电机的传感器通道值
 
                 print(f"[{timestamp[:-5]}]: chan{self.sensor_id}_val={self.val}\n")
-                await asyncio.sleep(1)
+                await asyncio.sleep(0.1)
             except Exception as e:
                 self.logger.error(f"Sensor reading error: {str(e)}")
 
     async def safety_monitor(self):
         """安全监控任务"""
         while not self._stop_event.is_set():
-            if self.val is not None and (self.val > 30.0 or self.val < -30.0):
+            if self.val is not None and not (self.test_threshold[0] <= self.val <= self.test_threshold[1]):  # 测试的传感器安全量程范围
                 self.logger.warning("⚠️  self.val out of bounds! Stopping system.")
                 self._stop_event.set()  # 设置停止信号
                 break
-            await asyncio.sleep(0.01) # 10ms轮询，不占CPU
+            await asyncio.sleep(0.1) # 0.1s轮询，不占CPU
     
     def signal_handler(self, loop):
-        self.logger.info("\n接收到关闭信号，停止当前电机，正在退出...")
+        self.logger.info("\n接收到关闭信号, 停止当前电机, 正在退出...")
         self._stop_event.set()  # 设置停止信号
-        # # 取消所有任务
-        # for task in asyncio.all_tasks():
-        #     task.cancel()
-        # loop.call_later(0.1, loop.stop)
-        # loop.close()
+       
     
     async def run_test(self, motor_start, motor_stop, motor_step):
         sensor_task = None
         safety_task = None
-        # self.pmac: Optional[PMAC_Controller] = None
+        self.one_actuator_info["脉冲范围"] = f"[{motor_start}, {motor_stop}, {motor_step}]"
 
         # 设置信号处理
         loop = asyncio.get_running_loop()
@@ -223,6 +217,3 @@ class OneMotorTest:
                 self.logger.critical(f"❌ 电机停止失败！请立刻手动断电！错误: {str(e)}")
 
         await self.save_to_csv()
-        # self.logger.info("🔚 测试任务全部结束，进程退出")
-        # import os
-        # os._exit(0)

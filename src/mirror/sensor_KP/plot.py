@@ -10,6 +10,8 @@ import pandas as pd
 import numpy as np
 from scipy.stats import pearsonr, spearmanr, linregress
 from mirror.logger import setup_logger
+from typing import Optional, List
+import re
 
 # 模块级日志配置，禁止向上传播，避免日志重复
 logger = setup_logger()
@@ -144,7 +146,6 @@ class DataAnalyzer:
             plot_num = 2 if CONFIG["show_residual_plot"] else 1
             fig, axs = plt.subplots(1, plot_num, figsize=(6*plot_num, 6), constrained_layout=True)
             axs = np.atleast_1d(axs) # 兼容plot_num=1的情况
-            # plt.figure(figsize=(6*plot_num, 6), constrained_layout=True)
 
             # 拟合图
             # 统计信息注释
@@ -153,11 +154,8 @@ class DataAnalyzer:
                 f"Spearman: r={self.spearman_r:.4f}, p={self.spearman_p:.4f}"
             )
             ax = axs[0]
-            # ax.subplot(1, plot_num, 1)
-            # ax.scatter(x, y, alpha=0.6, label='Measured data') # 实测数据
             ax.scatter(x, y, alpha=0.6, label='实测数据')
             ax.plot(x, y_pred, color='red', linewidth=2, label=f'拟合线: y={slope:.4f}x+{intercept:.4f}\n拟合优度: R²={self.r2:.4f}\n{stats_text}')
-            # ax.plot(x, y_pred, color='red', linewidth=2, label=f'y={slope:.4f}x+{intercept:.4f}\nR²={self.r2:.4f}\n{stats_text}')
             ax.set_xlabel(x_col, fontsize=12)
             ax.set_ylabel(y_col, fontsize=12)
             ax.legend(fontsize=8)
@@ -176,7 +174,6 @@ class DataAnalyzer:
                 ax.set_title('残差分布', fontweight='bold')
                 ax.grid(True, alpha=0.3)
             
-            # plt.tight_layout()
             # 自动创建目录
             fit_img_path = os.path.join(self.file_dir, f"{self.file_basename}_拟合图.{CONFIG['fig_format']}")
             if CONFIG["auto_create_dir"]:
@@ -231,7 +228,7 @@ class DataAnalyzer:
             plt.close()
             return ""
 
-    def plot(self, x_col: str, y_col: str, sensor_index: int) -> dict:
+    def plot(self, x_col: str, y_col: str, one_actuator_info: Optional[dict] = None) -> dict:
         """对外主接口：绘制所有图表，返回所有生成的图片路径和统计结果，不会向上抛异常"""
         result = {
             "success": False,
@@ -248,16 +245,23 @@ class DataAnalyzer:
                 logger.error("❌ 数据未加载成功，无法绘图")
                 return result
 
-            # 先做相关性分析，不管结果如何都继续绘图
+            # 先做相关性分析
             if not self.is_linear_relationship(x_col, y_col):
                 logger.warning("❌ 数据线性不相关，不再继续绘图")
                 return
 
             # 绘制趋势图
-            # +
             # result["trend_img"] = self.plot_data_trend(x_col, y_col)
             # 绘制拟合图
             self.slope, self.intercept, _, result["fit_img"] = self.plot_linear_relationship(x_col, y_col)
+            one_actuator_info["拟合图名称"] = f"{self.file_basename}_拟合图"
+            print(f"{self.file_basename}_拟合图")
+            one_actuator_info["拟合图"] = result["fit_img"]
+            test_time = re.search(r"data_(.*?)_拟合图", one_actuator_info["拟合图名称"])
+            if test_time:
+                one_actuator_info["测试时间"] = test_time.group(1)
+            one_actuator_info["线性方程"] = f"y = {self.slope:.4f}x + {self.intercept:.4f}"
+            one_actuator_info["线性度"] = f"{self.slope:.4f}"
 
             # 回写统计结果
             result.update({
@@ -269,9 +273,9 @@ class DataAnalyzer:
                 "r2": self.r2
             })
             logger.info(f"✅ 绘图完成, 拟合图: {result['fit_img']}")
-            kp[sensor_index] = self.slope
-            logger.info(f"记录sensor_index = {sensor_index}时, 矩阵kp = {kp}")
-            return result
+            kp[int(one_actuator_info["sensor_index"])] = self.slope
+            logger.info(f"记录sensor_index = {one_actuator_info['sensor_index']}时, 矩阵kp = {kp}")
+            return result, 
         except Exception as e:
             logger.error(f"❌ 绘图整体失败: {str(e)}")
             plt.close('all')
