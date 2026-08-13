@@ -17,7 +17,7 @@ class SSH_Config:
 
 
 class PMAC_Controller:
-    SSH_CONN_TIMEOUT = 2.0 
+    SSH_CONN_TIMEOUT = 3.0 
     GPA_RECV_TIMEOUT = 0.01
     SSH_LOGIN_PROMPT = ":/opt/ppmac# "
     GPA_SEP_PROMPT   = "\r\n"

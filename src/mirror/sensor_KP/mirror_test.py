@@ -93,7 +93,7 @@ class MirrorsTest:
     def get_domestic_amplifier_info(self):  # 国产放大器
         dev_info = []
         start_ip = "192.168.0."  # 起始ip
-        for id in range(134, 135, 1): # 全部需要19个放大器，测试时可根据需要收放
+        for id in range(104, 105, 1): # 全部需要19个放大器，测试时可根据需要收放
             current_ip = start_ip + str(id)
             dev_info.append(current_ip)
         return dev_info
@@ -144,7 +144,7 @@ class MirrorsTest:
             try:
                 await motor_test.run_test(
                     motor_start=0, 
-                    motor_stop=-120000, 
+                    motor_stop=-180000, 
                     motor_step=-5000
                 )
             except Exception as e:
@@ -167,7 +167,7 @@ class MirrorsTest:
 
         try:
             tasks = []
-            for chan_id in range(4, 5):   # 每个放大器有8个通道，测试每个通道对应的电机
+            for chan_id in range(1, 9):   # 每个放大器有8个通道，测试每个通道对应的电机
                 try:
                     matched_chan = self.df[(self.df['Amplifier_ip'] == amp_ip) & (self.df['Channel_id'] == chan_id)]
                     if matched_chan.empty:
@@ -196,7 +196,7 @@ class MirrorsTest:
                                      "线性方程": None,
                                      "线性度": None
                 }
-                one_actuator_info["测试区间"] = "[-150N, 150N]" if one_actuator_info["传感器量程"] == "200N" else "[-60N, 60N]"
+                one_actuator_info["测试区间"] = "[-50N, 50N]" if one_actuator_info["传感器量程"] == "200N" else "[-20N, 20N]"
                 motor = OneMotorTest(df=self.df, pmac=pmac_controller, amplifier=sensor_reader, one_actuator_info=one_actuator_info)    # 测试传感器对应的电机
                 task = asyncio.create_task(_wrap_motor_test(motor))
                 tasks.append(task)
@@ -278,7 +278,7 @@ async def sensor_test(isDomestic:bool, isMergeCell:bool, mirrorId:int):
 
 if __name__ == "__main__":
     try:
-        asyncio.run(sensor_test(isDomestic=True, isMergeCell=False, mirrorId=2))
+        asyncio.run(sensor_test(isDomestic=True, isMergeCell=False, mirrorId=1))
     except Exception as e:
         print(f"程序出现异常，正在退出..., {e}")
 

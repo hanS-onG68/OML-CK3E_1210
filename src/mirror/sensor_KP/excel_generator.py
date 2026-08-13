@@ -5,6 +5,7 @@ from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Font
 from openpyxl import Workbook
 from openpyxl.utils import column_index_from_string
+from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, TwoCellAnchor
 import re
 from typing import Optional, List
 import time
@@ -13,10 +14,10 @@ class ExcelDataHandler:
     def __init__(self, excel_path="./mirror2_data/sensor_data.xlsx", all_actuator_info: Optional[dict] =None, is_merge_cell=False):
         self.excel_path = excel_path
         self.init_excel()
-        self.start_row = self.ws.max_row + 1
         self.all_actuator_info = all_actuator_info
         self.is_merge_cell = is_merge_cell
         self.header_col_map = { "测试时间": "A", "电机id": "B", "传感器id": "C", "弹簧id": "D", "传感器量程": "E", "测试区间": "F", "脉冲范围": "G", "拟合图": "H", "线性方程": "I", "线性度": "J", "平均线性度": "K" }
+        self.file_dir = None
         pass
 
     def init_excel(self):
@@ -30,7 +31,7 @@ class ExcelDataHandler:
             self.wb.save(self.excel_path)  # 保存文件到当前路径下
         else:
             try:
-                self.wb = load_workbook(self.excel_path, data_only=False)  # 加载现有文件，data_only=True确保读取公式的计算结果而不是公式本身
+                self.wb = load_workbook(self.excel_path, data_only=True)  # 加载现有文件，data_only=True确保读取公式的计算结果而不是公式本身
                 self.ws = self.wb["Sensor Data"]  # 选择工作表
                 self.ws._images = []              # 彻底清空所有缓存的旧图片对象，丢弃全部失效的文件句柄
             except Exception as e:
@@ -46,36 +47,23 @@ class ExcelDataHandler:
                 self.wb.save(self.excel_path)
 
     def batch_insert_images(self):
-        current_row = self.start_row
+        current_row = self.ws.max_row + 1
         print(f"当前表格总行数{self.ws.max_row}，下一条新数据写入起始行：{current_row}")
         for img_name, actuator_info in self.all_actuator_info.items():
             full_img_path = actuator_info["拟合图"]
+            if not self.file_dir:
+                self.file_dir = os.path.dirname(full_img_path)
             if not os.path.exists(full_img_path):
                 print(f"跳过不存在的文件：{full_img_path}")
                 continue
-
-            # 1.加载图片，统一设置尺寸避免变形
-            img = Image(full_img_path)
-            cell_pos = f"{self.header_col_map['拟合图']}{current_row}"  # 目标单元格位置
-            self.ws.add_image(img, cell_pos)  # 图片锚定到单元格中：
-            target_cell = self.ws[cell_pos]   # 目标单元格
-
             
-            # 2.统一缩放到120x120像素，可根据你的单元格大小调整
-            original_w, original_h = img.width, img.height
-            scale = min(120/original_w, 120/original_h)
-            img.width = int(original_w * scale)
-            img.height = int(original_h * scale)
-            # 自动调整对应行高和列宽，适配图片大小
-            self.ws.row_dimensions[current_row].height = 90
-            self.ws.column_dimensions[self.header_col_map['拟合图']].width = 18
-
-            # 3. 直接在同一个单元格写入文件名，自动靠下居中对齐
+            # 1. 直接在同一个单元格写入文件名，自动靠下居中对齐
+            target_cell = self.ws[f"{self.header_col_map['拟合图']}{current_row}"]   # 目标单元格
             target_cell.value = img_name
             target_cell.alignment = Alignment(horizontal='center', vertical='bottom')  # 设置文字样式：底部居中，字号调小一点，不遮挡图片
             target_cell.font = Font(size=9, color="333333")
 
-            # 4. 将其他信息写入对应的单元格
+            # 2. 将其他信息写入对应的单元格
             self.ws[f"{self.header_col_map['电机id']}{current_row}"] = actuator_info["电机id"]
             self.ws[f"{self.header_col_map['测试时间']}{current_row}"] = actuator_info["测试时间"]
             self.ws[f"{self.header_col_map['传感器id']}{current_row}"] = actuator_info["传感器id"]
@@ -109,21 +97,41 @@ class ExcelDataHandler:
                 self.ws.cell(row=new_row_idx, column=col_idx).value = cell_value
 
         # 4. 合并单元格
-        if self.is_merge_cell:
-            for row in range(start_row, self.ws.max_row + 1, 3):
-                self.ws.merge_cells(f"{self.header_col_map['电机id']}{row}:{self.header_col_map['电机id']}{row + 2}")
-                self.ws.merge_cells(f"{self.header_col_map['传感器id']}{row}:{self.header_col_map['传感器id']}{row + 2}")
-                self.ws.merge_cells(f"{self.header_col_map['弹簧id']}{row}:{self.header_col_map['弹簧id']}{row + 2}")
-                self.ws.merge_cells(f"{self.header_col_map['传感器量程']}{row}:{self.header_col_map['传感器量程']}{row + 2}")
-                self.ws.merge_cells(f"{self.header_col_map['平均线性度']}{row}:{self.header_col_map['平均线性度']}{row + 2}")
-                self.ws[f"{self.header_col_map['平均线性度']}{row}"] = f"=AVERAGE({self.header_col_map['线性度']}{row}:{self.header_col_map['线性度']}{row + 2})"
+        for row in range(start_row, self.ws.max_row + 1, 3):
+            self.ws.merge_cells(f"{self.header_col_map['电机id']}{row}:{self.header_col_map['电机id']}{row + 2}")
+            self.ws.merge_cells(f"{self.header_col_map['传感器id']}{row}:{self.header_col_map['传感器id']}{row + 2}")
+            self.ws.merge_cells(f"{self.header_col_map['弹簧id']}{row}:{self.header_col_map['弹簧id']}{row + 2}")
+            self.ws.merge_cells(f"{self.header_col_map['传感器量程']}{row}:{self.header_col_map['传感器量程']}{row + 2}")
+            self.ws.merge_cells(f"{self.header_col_map['平均线性度']}{row}:{self.header_col_map['平均线性度']}{row + 2}")
+            self.ws[f"{self.header_col_map['平均线性度']}{row}"] = f"=AVERAGE({self.header_col_map['线性度']}{row}:{self.header_col_map['线性度']}{row + 2})"
+            for row_id in range(row, row+3):  # 插入图片
+                img_name = self.ws[f"{self.header_col_map['拟合图']}{row_id}"].value + ".png"
+                img_dir = os.path.join(self.file_dir, img_name)
+                img = Image(img_dir)
+                cell_pos = f"{self.header_col_map['拟合图']}{row_id}"  # 目标单元格位置
+                try:
+                    self.ws.add_image(img, cell_pos)  # 图片锚定到单元格中：
+                    print(f"✅ 图片已插入到 {cell_pos}: {img_dir}")
+                except Exception as e:
+                    print(f"❌ 插入图片 {img_name} 失败: {e}")
+                original_w, original_h = img.width, img.height
+                scale = min(120/original_w, 120/original_h)
+                img.width = int(original_w * scale)
+                img.height = int(original_h * scale)
+                # 自动调整对应行高和列宽，适配图片大小
+                self.ws.row_dimensions[row_id].height = 90
+                self.ws.column_dimensions[self.header_col_map['拟合图']].width = 18
+
 
         self.wb.save(self.excel_path)
         print("带图片的表格排序完成，所有图片自动跟随行移动")
 
     def main(self):
+        if not self.all_actuator_info:
+            return
         self.batch_insert_images()
-        self.sort_excel_with_images()
+        if self.is_merge_cell:
+            self.sort_excel_with_images()
 
 
 # 调用示例，适配你当前的sensor_KP项目
@@ -143,7 +151,7 @@ if __name__ == "__main__":
             "channel_id": 3,
             "mirror_id": 2,
             "sensor_index":2,   # 表示传感器在全部150个传感器中的索引位置，0~149
-            "拟合图": "./mirror2_data/motor1_data_20260729_144540_拟合图.png",
+            "拟合图": "./data/motor1_data_20260729_144540_拟合图.png",
             "线性方程": "y=4008x+1"
         },
         "motor1_data_20260729_153223_拟合图": {
@@ -160,7 +168,7 @@ if __name__ == "__main__":
                     "channel_id": 3,
                     "mirror_id": 2,
                     "sensor_index":2,   # 表示传感器在全部150个传感器中的索引位置，0~149
-                    "拟合图": "./mirror2_data/motor1_data_20260729_153223_拟合图.png",
+                    "拟合图": "./data/motor1_data_20260729_153223_拟合图.png",
                     "线性方程": "y=4009x+1"
         },
         "motor1_data_20260729_154924_拟合图": {
@@ -177,9 +185,9 @@ if __name__ == "__main__":
                     "channel_id": 3,
                     "mirror_id": 2,
                     "sensor_index":2,   # 表示传感器在全部150个传感器中的索引位置，0~149
-                    "拟合图": "./mirror2_data/motor1_data_20260729_154924_拟合图.png",
+                    "拟合图": "./data/motor1_data_20260729_154924_拟合图.png",
                     "线性方程": "y=4018x+1"
         }
     }
-    ExcelDataHandler(excel_path="./mirror2_data/sensor_data.xlsx", all_actuator_info=all_actuator_info, is_merge_cell=True).main()
+    ExcelDataHandler(excel_path="./mirror3_data/sensor_data.xlsx", all_actuator_info=all_actuator_info, is_merge_cell=True).main()
     pass

@@ -85,7 +85,7 @@ class Amplifier:  # 国产放大器
                         count=reg_count,
                         slave=self.slave_id  # 通讯地址默认为01
                     ),
-                    timeout=3.0 # 读取时间设置成3秒
+                    timeout=5.0 # 读取时间设置成3秒
                 )
             except asyncio.TimeoutError:
                 logger.error("读取超时！")
