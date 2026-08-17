@@ -95,8 +95,10 @@ class ExcelDataHandler:
         for new_row_idx, (a_key, b_key, row_cells) in enumerate(rows_data, start=start_row):
             for col_idx, cell_value in enumerate(row_cells, start=1):
                 self.ws.cell(row=new_row_idx, column=col_idx).value = cell_value
+        # self.wb.save(self.excel_path)
 
         # 4. 合并单元格
+        # if self.is_merge_cell:
         for row in range(start_row, self.ws.max_row + 1, 3):
             self.ws.merge_cells(f"{self.header_col_map['电机id']}{row}:{self.header_col_map['电机id']}{row + 2}")
             self.ws.merge_cells(f"{self.header_col_map['传感器id']}{row}:{self.header_col_map['传感器id']}{row + 2}")
@@ -122,7 +124,6 @@ class ExcelDataHandler:
                 self.ws.row_dimensions[row_id].height = 90
                 self.ws.column_dimensions[self.header_col_map['拟合图']].width = 18
 
-
         self.wb.save(self.excel_path)
         print("带图片的表格排序完成，所有图片自动跟随行移动")
 
@@ -138,21 +139,21 @@ class ExcelDataHandler:
 if __name__ == "__main__":
     all_actuator_info ={
         "motor1_data_20260729_144540_拟合图": {
-            "传感器id": "192.168.0.100:1", 
-            "pmac_ip": "192.168.0.200", 
-            "测试区间": "[-150N, 150N]",
-            "测试时间": "20260729_144540",
-            "传感器量程": "200N",
-            "脉冲范围": "[0, -20W, -5K]",
-            "电机id": 1,
-            "弹簧id": 1,
-            "线性度": 4008,
-            "amplifier_id": 0,
-            "channel_id": 3,
-            "mirror_id": 2,
-            "sensor_index":2,   # 表示传感器在全部150个传感器中的索引位置，0~149
-            "拟合图": "./data/motor1_data_20260729_144540_拟合图.png",
-            "线性方程": "y=4008x+1"
+                    "传感器id": "192.168.0.100:1", 
+                    "pmac_ip": "192.168.0.200", 
+                    "测试区间": "[-150N, 150N]",
+                    "测试时间": "20260729_144540",
+                    "传感器量程": "200N",
+                    "脉冲范围": "[0, -20W, -5K]",
+                    "电机id": 1,
+                    "弹簧id": 1,
+                    "线性度": 4008,
+                    "amplifier_id": 0,
+                    "channel_id": 3,
+                    "mirror_id": 2,
+                    "sensor_index":2,   # 表示传感器在全部150个传感器中的索引位置，0~149
+                    "拟合图": "./data/motor1_data_20260729_144540_拟合图.png",
+                    "线性方程": "y=4008x+1"
         },
         "motor1_data_20260729_153223_拟合图": {
                     "传感器id": "192.168.0.100:1", 
