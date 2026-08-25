@@ -108,15 +108,9 @@ class OneMotorTest:
             try:
                 try:
                     start_time = time.perf_counter()
-                    res = await asyncio.wait_for(
-                        self.amplifier.read_data(),
-                        timeout=4.0
-                    )
+                    res = await self.amplifier.read_data()
                     elapsed_time = time.perf_counter() - start_time
                     print(f"✅️放大器读取数据成功, 实际耗时: {elapsed_time:.4f} 秒")
-                except asyncio.TimeoutError:
-                    self.logger.error(f"读取超时，继续...")
-                    continue
                 except Exception as e:
                     self.logger.error(f"Sensor-reading error: {str(e)}")
                     break
@@ -130,7 +124,7 @@ class OneMotorTest:
                 self.val = sensor_values[self.sensor_id - 1]  # 获取对应电机的传感器通道值
 
                 print(f"[{timestamp[:-5]}]: chan{self.sensor_id}_val={self.val}\n")
-                await asyncio.sleep(0.1)
+                await asyncio.sleep(1)
             except Exception as e:
                 self.logger.error(f"Sensor reading error: {str(e)}")
 
@@ -141,17 +135,18 @@ class OneMotorTest:
                 self.logger.warning("⚠️  self.val out of bounds! Stopping system.")
                 self._stop_event.set()  # 设置停止信号
                 break
-            await asyncio.sleep(0.1) # 0.1s轮询，不占CPU
+            await asyncio.sleep(0.5) # 0.1s轮询，不占CPU
     
     def signal_handler(self, loop):
         self.logger.info("\n接收到关闭信号, 停止当前电机, 正在退出...")
         self._stop_event.set()  # 设置停止信号
        
     
-    async def run_test(self, motor_start, motor_stop, motor_step):
+    # async def run_test(self, motor_start, motor_stop, motor_step):
+    async def run_test(self, data_list):
         sensor_task = None
         safety_task = None
-        self.one_actuator_info["脉冲范围"] = f"[{motor_start}, {motor_stop}, {motor_step}]"
+        self.one_actuator_info["脉冲范围"] = f"[start={data_list[0]}, stop={data_list[-1]}, step=f'{data_list[0]}- {data_list[1]}']"
 
         # 设置信号处理
         loop = asyncio.get_running_loop()
@@ -165,13 +160,13 @@ class OneMotorTest:
                     safety_task = asyncio.create_task(self.safety_monitor())
                     await self.pmac.exec_command(f"#{self.motor_id}J/")            # 使能电机
 
-                    for step in range(motor_start, motor_stop, motor_step):
+                    for step in data_list:
                         if self._stop_event.is_set():
                             self.logger.info("🛑 停止信号已触发，提前终止测试循环")
                             break
                         try:
                             await self.pmac.exec_command(f"#{self.motor_id}J={step}")
-                            await asyncio.sleep(1)  # 等待数据稳定
+                            await asyncio.sleep(3)  # 等待数据稳定
                             if self._stop_event.is_set():
                                 self.logger.info("🛑 安全监控触发，提前终止等待")
                                 break

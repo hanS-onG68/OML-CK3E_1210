@@ -79,18 +79,11 @@ class Amplifier:  # 国产放大器
         reg_count = 16  # 32位浮点数占2个连续寄存器, 8个通道共16个寄存器
 
         try: # 使用03H功能码读取保持寄存器
-            try:
-                response = await asyncio.wait_for(self.client.read_holding_registers(
-                        address=start_addr,
-                        count=reg_count,
-                        slave=self.slave_id  # 通讯地址默认为01
-                    ),
-                    timeout=5.0 # 读取时间设置成3秒
-                )
-            except asyncio.TimeoutError:
-                logger.error("读取超时！")
-                return None
-
+            response = await self.client.read_holding_registers(
+                address=start_addr,
+                count=reg_count,
+                slave=self.slave_id  # 通讯地址默认为01
+            )
             if response.isError():
                 logger.error(f"读取失败: {response}")
                 return None
@@ -98,7 +91,6 @@ class Amplifier:  # 国产放大器
             logger.info(f"response = {response}, response.registers: {response.registers}, len = {len(response.registers)}")
             try:
                 results = {}
-                tasks = []
                 for index in range(0, len(response.registers), 2):
                     reg_pair = response.registers[index:index+2]
                     decoder = BinaryPayloadDecoder.fromRegisters(reg_pair, byteorder=Endian.BIG, wordorder=Endian.BIG)
@@ -106,9 +98,6 @@ class Amplifier:  # 国产放大器
                     channel = int(index / 2 + 1)
                     logger.info(f"通道{channel}测量值: {val:.4f}")
                     results[f"channel_{channel}"] = val
-                    # task = asyncio.create_task(self.get_val_by_channel(index, reg_pair, results))
-                    # tasks.append(task)
-                # await asyncio.gather(*tasks)
                 return results
             except Exception as e:
                 logger.error(f"数据解析异常: {str(e)}", exc_info=True)
@@ -139,7 +128,7 @@ class Amplifier:  # 国产放大器
             logger.info(f"host:{self.host}, fetch data: {result}")
             return result
         else:
-            logger.error("获取测量值失败，返回None")
+            logger.error("获取测量值失败, 返回None")
             return (self.host,  datetime.now(), values)
 
 

@@ -192,29 +192,36 @@ class DataAnalyzer:
             return ""
         try:
             logger.info(f"📊 正在绘制趋势图，有效数据量: {len(self.df)}行")
-            plt.figure(figsize=(12, 8), constrained_layout=True)
+            plt.figure(figsize=(24, 16), constrained_layout=True)
 
             plt.plot(self.df[x_col], self.df[y_col], 
-                    marker='o', linestyle='-', linewidth=2, markersize=6,
+                    marker='o', linestyle='-', linewidth=1, markersize=3,
                     color='#2E86AB', label='实测值')
 
             # 统计信息注释
-            stats_text = (
-                f"皮尔逊相关系数: r={self.pearson_r:.4f}, p={self.pearson_p:.4f}\n"
-                f"斯皮尔曼相关系数: r={self.spearman_r:.4f}, p={self.spearman_p:.4f}\n"
-            )
-            if self.r2 is not None:
-                stats_text += f"线性拟合R²: {self.r2:.4f}"
-            plt.annotate(stats_text, 
-                    xy=(0.02, 0.98), xycoords='axes fraction',
-                    bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8),
-                    fontsize=10, ha='left', va='top')
+            # stats_text = (
+            #     f"皮尔逊相关系数: r={self.pearson_r:.4f}, p={self.pearson_p:.4f}\n"
+            #     f"斯皮尔曼相关系数: r={self.spearman_r:.4f}, p={self.spearman_p:.4f}\n"
+            # )
+            # if self.r2 is not None:
+            #     stats_text += f"线性拟合R²: {self.r2:.4f}"
+            # plt.annotate(stats_text, 
+            #         xy=(0.02, 0.98), xycoords='axes fraction',
+            #         bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="gray", alpha=0.8),
+            #         fontsize=10, ha='left', va='top')
 
             plt.title(f"{x_col}-{y_col} 趋势图", fontsize=14, fontweight='bold', pad=20)
             plt.xlabel(x_col, fontsize=12)
             plt.ylabel(y_col, fontsize=12)
             plt.grid(True, alpha=0.3, linestyle='--')
             plt.legend(fontsize=8)
+            import matplotlib.ticker as ticker
+            # 获取当前的坐标轴实例
+            ax = plt.gca()
+            # 设置横坐标的主刻度间隔为 10（可根据实际需求修改数字）
+            ax.xaxis.set_major_locator(ticker.MultipleLocator(5)) 
+            # 设置纵坐标的主刻度间隔为 10（可根据实际需求修改数字）
+            ax.yaxis.set_major_locator(ticker.MultipleLocator(20000)) 
             # plt.tight_layout()
 
             trend_img_path = os.path.join(self.file_dir, f"{self.file_basename}_趋势图.{CONFIG['fig_format']}")
@@ -254,14 +261,14 @@ class DataAnalyzer:
             # result["trend_img"] = self.plot_data_trend(x_col, y_col)
             # 绘制拟合图
             self.slope, self.intercept, _, result["fit_img"] = self.plot_linear_relationship(x_col, y_col)
-            one_actuator_info["拟合图名称"] = f"{self.file_basename}_拟合图"
-            print(f"{self.file_basename}_拟合图")
-            one_actuator_info["拟合图"] = result["fit_img"]
-            test_time = re.search(r"data_(.*?)_拟合图", one_actuator_info["拟合图名称"])
-            if test_time:
-                one_actuator_info["测试时间"] = test_time.group(1)
-            one_actuator_info["线性方程"] = f"y = {self.slope:.4f}x + {self.intercept:.4f}"
-            one_actuator_info["线性度"] = f"{self.slope:.4f}"
+            # one_actuator_info["拟合图名称"] = f"{self.file_basename}_拟合图"
+            # print(f"{self.file_basename}_拟合图")
+            # one_actuator_info["拟合图"] = result["fit_img"]
+            # test_time = re.search(r"data_(.*?)_拟合图", one_actuator_info["拟合图名称"])
+            # if test_time:
+            #     one_actuator_info["测试时间"] = test_time.group(1)
+            # one_actuator_info["线性方程"] = f"y = {self.slope:.4f}x + {self.intercept:.4f}"
+            # one_actuator_info["线性度"] = f"{self.slope:.4f}"
 
             # 回写统计结果
             result.update({
