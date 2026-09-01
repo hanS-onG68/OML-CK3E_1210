@@ -27,7 +27,10 @@ class PMAC_Controller:
     VARIABLES_MAP    = { 
             "RealPos":  "P8192",
             "RealVel":  "P8193",
-            "AmpEna":   "Motor[1].AmpEna",
+            "AmpEna":   "Motor[{axis}].AmpEna",
+            "ActPos":   "Motor[{axis}].ActPos",
+            "DesPos":   "Motor[{axis}].DesPos",
+            "HomePos":  "Motor[{axis}].HomePos",
     }   
 
 
@@ -120,16 +123,23 @@ class PMAC_Controller:
                 self.logger.warning(f"EXEC {cmd} FAILED: {err!r}")
             return (False, [])
 
-    async def get_variable(self, valName:str) -> float:
+    def get_variable_name(self, var_type: str, axis: int = 1) -> str:
+        """根据变量类型和轴号生成实际的PMAC命令"""
+        template = self.VARIABLE_TEMPLATES.get(var_type)
+        if template is None:
+            raise ValueError(f"Unknown variable type: {var_type}")
+        return template.format(axis=axis)
+
+    async def get_variable(self, var_type:str, axis: int = 1) -> float:
         """获取单个值"""
-        cmd = self.VARIABLES_MAP[valName]
+        cmd = self.get_variable_name(var_type, axis)
         ok, res = await self.exec_command(cmd)
         return float(res[-1]) if ok else None
 
 
-    async def get_variables(self, valNames:list[str]) -> list[float]:
+    async def get_variables(self, var_types: list[str], axis: int = 1) -> list[float]:
         """获取多个值"""
-        cmd = ";".join(self.VARIABLES_MAP[vn] for vn in valNames)
+        cmd = ";".join(self.get_variable_name(vt, axis) for vt in var_types)
         ok, res = await self.exec_command(cmd)
         return [float(val) for val in res[1:]] if ok else []
 

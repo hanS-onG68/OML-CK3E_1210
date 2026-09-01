@@ -20,9 +20,9 @@ TOTAL_BUFF_BYTES = DATA_BUFF_BYTES + TIMESTAMP_BUFF_BYTES
 SHM_NAME = "QUEST_Mirrors_Control"
 
 
-DEFAULT_CTRL_IPS = [f"192.168.0.{200+i}" for i in range(6)]
+DEFAULT_CTRL_IPS = [f"192.168.0.{200+i}" for i in range(1)]
 # DEFAULT_AMP_PORTS = [f"/dev/ttyr{i:02d}" for i in range(19)]      # 进口放大器
-DEFAULT_AMP_PORTS = [f"192.168.0.{i}" for i in range(102, 121, 1)]  # 国产放大器
+DEFAULT_AMP_PORTS = [f"192.168.0.{i}" for i in range(103, 104, 1)]  # 国产放大器
 
 
 

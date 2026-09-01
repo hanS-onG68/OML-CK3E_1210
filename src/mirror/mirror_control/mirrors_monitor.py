@@ -18,7 +18,7 @@ class HexagonSensorVisualizer(QMainWindow):
         super().__init__()
         self.actuators_per_mirror = 25  #（中心镜不部署传感器,每个边缘子镜的传感器数量）
         self.mirror_count = 6           # 6个边缘子镜
-        self.mirror = Mirrors(is_domestic=False)      # 假设使用进口放大器
+        self.mirror = Mirrors(is_domestic=True)       # 国产放大器
         self.sensor_data = self.mirror.Force          # 传感器数据
         # self.sensor_idx = self.mirror._sensor_idx                
         
@@ -27,7 +27,7 @@ class HexagonSensorVisualizer(QMainWindow):
         self.side_length = self.flat_to_flat / np.sqrt(3)   # 边长 ≈ 1.1547米
         
         self.hexagon_centers = self.calculate_hexagon_centers()            # 各个子镜的中心位置（x,y) - 蜂巢紧密排列
-        self.sensor_positions = np.array(self.calculate_hexagon_layout())  # 各个传感器的位置坐标（x,y): 依次从物理标定的边缘子镜1~边缘子镜6，子镜1的逻辑0（即self.sensor_positions[0,0]）对应mirror.Force[0][0]
+        self.sensor_positions = np.array(self.calculate_hexagon_layout())  # 各个传感器的位置坐标（x,y): 依次从物理标定的边缘子镜1~边缘子镜6，子镜1的逻辑0（即self.sensor_positions[0,0]）对应mirror.Force[0][0]; 形状：6x25x2
         
         # 保存初始视图范围
         self.initial_view_range = None
@@ -81,13 +81,13 @@ class HexagonSensorVisualizer(QMainWindow):
     def calculate_hexagon_centers(self):
         """计算7个六边形的中心位置 - 真正蜂巢紧密排列"""
         # 中心六边形
-        centers = [(0, 0)]
+        centers = [(0, 0)]   # 中心子镜的中心位置
         
         # 中心间距 = 对边距离 = 2米
         center_distance = self.flat_to_flat  # 2.0米
         
         # 六个方向的角度（从水平向右开始，逆时针60°递增）
-        angles = [90, 30, -30, -90, -150, -210]
+        angles = [90, 30, -30, -90, -150, -210]  # 边缘子镜的中心位置
         
         for angle in angles:
             # 将角度转换为弧度
@@ -379,7 +379,7 @@ class HexagonSensorVisualizer(QMainWindow):
         threshold_layout.addWidget(self.threshold_label)
         filter_layout.addLayout(threshold_layout)
 
-            # 调测使用
+        # 调测使用
         mir_sub_layout = QHBoxLayout()
         mir_sub_layout.addWidget(QLabel("要显示的子镜:"))
         for mir_idx in range(self.mirror_count):
@@ -547,7 +547,7 @@ class HexagonSensorVisualizer(QMainWindow):
         self.current_text_items = np.empty((self.mirror_count, self.actuators_per_mirror), dtype=object)  # 用于显示传感器数值的文本项
         sensor_positions = self.sensor_positions.reshape(-1, 2)  # 展平为150 x 2的形状
         for idx, (x, y) in enumerate(sensor_positions):
-            i, j = idx // self.actuators_per_mirror, idx % self.actuators_per_mirror   # i表示镜子id,j表示传感器相对该子镜的编号， i*25+j就是传感器的物理位置，对应文件setting/Actuator_Mapping.csv中的actuator_id（i = actuator_id）
+            i, j = idx // self.actuators_per_mirror, idx % self.actuators_per_mirror   # i表示镜子id, j表示传感器相对该子镜的编号, i*25+j就是传感器的物理位置，对应文件setting/Actuator_Mapping.csv中的actuator_id
             value = self.sensor_data[i, j]
             point = self.scatter_plot.points()[idx]
             if idx%25%2:  # 外圈点用方形，内圈点用圆形
@@ -580,6 +580,7 @@ class HexagonSensorVisualizer(QMainWindow):
             self.update_global_statistics()
             self.update_mirror_statistics()
             self.scatter_plot.setPointsVisible(self.visible_mask.ravel().tolist())
+            self.sensor_data = self.mirror.Force
             for (i, j), text_item in np.ndenumerate(self.current_text_items):
                 if not self.visible_mask[i, 0]:   # 当前的子镜是否可见
                     [item.setVisible(False) for item in self.current_text_items[i, :]]  # 隐藏该子镜的所有传感器文本项
@@ -707,8 +708,7 @@ class HexagonSensorVisualizer(QMainWindow):
         for mirror_idx in range(self.mirror_count):  # 只有6个边缘子镜有促动器
             start_idx = mirror_idx * self.actuators_per_mirror
             end_idx = start_idx + self.actuators_per_mirror
-            actuator_indices = list(range(start_idx, end_idx))  # 物理位置的id
-
+            actuator_indices = list(range(start_idx, end_idx))  # 物理位置的id=settings/Actuator_Mapping.csv文件中的actuator_id
             group_box = QGroupBox(f"子镜{mirror_idx+1} （促动器 {start_idx} ~ {end_idx}）")
             group_layout = QVBoxLayout(group_box)
 
@@ -723,9 +723,8 @@ class HexagonSensorVisualizer(QMainWindow):
             # 每行放5个复选框（25个促动器，5x5）
             self.checkboxes = []
             for i, act_idx in enumerate(actuator_indices):
-                # 促动器编号从1开始显示
                 act_idx = act_idx % 25
-                phy_id = Actuator2Pon_Map[mirror_idx+1][act_idx]
+                phy_id = Actuator2Pon_Map[mirror_idx+1][act_idx]  # 促动器编号从1开始显示
                 act_name = f"促动器-{act_idx}({phy_id})"
                 cb = QCheckBox(f"{act_name}")
                 row = i // 8
@@ -733,6 +732,7 @@ class HexagonSensorVisualizer(QMainWindow):
                 grid_layout.addWidget(cb, row, col)
                 self.checkboxes.append(cb)
 
+            # 联动：对应位置的两个径向促动器需要联动
             for i in range(1, 13, 2):
                 self.checkboxes[i].toggled.connect(lambda checked, cb=self.checkboxes[i+12]: self.sync_cb(checked, cb))
                 self.checkboxes[i+12].toggled.connect(lambda checked, cb=self.checkboxes[i]: self.sync_cb(checked, cb))
@@ -785,9 +785,9 @@ class HexagonSensorVisualizer(QMainWindow):
         self.test_matrix_dialog = dialog
 
     def sync_cb(self, checked, cb):
-        cb.blockSignals(True)
-        cb.setChecked(checked)
-        cb.blockSignals(False)
+        cb.blockSignals(True)  # 暂停信号发射
+        cb.setChecked(checked) # 修改状态
+        cb.blockSignals(False) # 恢复信号发射
 
     def _on_select_all_mirror(self, state, checkboxes):
         """子镜全选复选框的状态改变时，同步该组所有促动器复选框"""
@@ -810,7 +810,7 @@ class HexagonSensorVisualizer(QMainWindow):
                 if cb.isChecked():
                     act_global_index = group['start_idx'] + i  # 0-based
                     selected_actuators.append(act_global_index)
-                    Mirrors.Target[group["mirror_idx"]][act_global_index] = float(target_force) if not increment_force else (Mirrors.Target[group["mirror_idx"]][act_global_index] + float(increment_force))
+                    Mirrors.Target[group["mirror_idx"]][i] = float(target_force) if not increment_force else (Mirrors.Target[group["mirror_idx"]][i] + float(increment_force))
 
         if not selected_actuators:
             QMessageBox.information(dialog, "提示", "未选择任何促动器")
@@ -836,7 +836,6 @@ def palette_set():
 if __name__ == "__main__":
     import asyncio
     try:
-        # 开始跟踪调用
         from qasync import QEventLoop, asyncSlot
         app = QApplication(sys.argv)
         with QEventLoop(app) as loop:
