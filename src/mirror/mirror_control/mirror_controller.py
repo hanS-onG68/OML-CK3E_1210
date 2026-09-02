@@ -54,8 +54,8 @@ class Mirrors:
         self.Available = np.full((MIRRORS_COUNT, ACTUATORS_PER_MIRROR), False, dtype=bool)  # 该位置是否可用
 
         # 调试时选择：
-        Mirrors.Target.fill(1.0)
-        self.Available[0, :] = True    # 选择几号边缘子镜
+        Mirrors.Target.fill(10.0)
+        self.Available[0, 0] = True    # 选择几号边缘子镜
 
 
         # 映射索引
@@ -195,31 +195,31 @@ class Mirrors:
                 self.Force, self.Force_TS = self.get_force()
                 
                 # # 全矩阵运算，效率不高，但意思清晰。如果要追求效率，可以先用条件卡住矩阵
-                # Error = Mirrors.Target - self.Force
-                # raw = Error * self.K_p
+                Error = Mirrors.Target - self.Force
+                raw = Error * self.K_p
                 
                 # # 严格条件筛选
-                # valid_mask = (self.Available &
-                #         ~np.isnan(self.Force) &
-                #         (Mirrors.Target>self.Force_limit_neg) &
-                #         (Mirrors.Target<self.Force_limit_pos) &
-                #         (self.Force_TS - now_ts < self.Force_timeout)
-                # )
-                # need_move_mask = valid_mask & (np.abs(Error) > self.Threshold)
+                valid_mask = (self.Available &
+                        ~np.isnan(self.Force) &
+                        (Mirrors.Target>self.Force_limit_neg) &
+                        (Mirrors.Target<self.Force_limit_pos) &
+                        (self.Force_TS - now_ts < self.Force_timeout)
+                )
+                need_move_mask = valid_mask & (np.abs(Error) > self.Threshold)
                 
                 # # 转换成各促动器电机补偿步数
-                # self.Steps = np.where(need_move_mask, np.clip(raw, -self.steps_limit, self.steps_limit), 0.0)
+                self.Steps = np.where(need_move_mask, np.clip(raw, -self.steps_limit, self.steps_limit), 0.0)
 
                 
-                # with pd.option_context('display.max_rows', 6, 'display.max_columns', 25, 'display.precision', 2):
-                #     self.logger.info(f"self.Force:\n{pd.DataFrame(self.Force)}\n")
-                #     self.logger.info(f"raw_Steps:\n{pd.DataFrame(raw)}\n")
-                #     self.logger.info(f"self.Steps:\n{pd.DataFrame(self.Steps)}\n")
+                with pd.option_context('display.max_rows', 6, 'display.max_columns', 25, 'display.precision', 2):
+                    self.logger.info(f"self.Force:\n{pd.DataFrame(self.Force)}\n")
+                    self.logger.info(f"raw_Steps:\n{pd.DataFrame(raw)}\n")
+                    self.logger.info(f"self.Steps:\n{pd.DataFrame(self.Steps)}\n")
                     
                 # # 控制电机运行
-                # cmds = self.build_motor_commands(self.Steps)
-                # print(f"CMDS= {cmds}")
-                # await self.execute_commands(cmds)
+                cmds = self.build_motor_commands(self.Steps)
+                print(f"CMDS= {cmds}")
+                await self.execute_commands(cmds)
         except KeyboardInterrupt:
             pass
 
@@ -242,10 +242,6 @@ class Mirrors:
             tasks.append(asyncio.create_task(self.Controllers[ctrl_id].exec_command(cmd)))
         await asyncio.wait_for(asyncio.gather(*tasks), timeout=3.2)
 
-
-    async def moter_one(self, ctrl_id:int, axis_id:int, target:int):
-        cmd = "#{axis_id}J={target:d}"
-        await self.Controllers[ctrl_id]._exec_command(cmd)
 
 
 if __name__ == "__main__":

@@ -602,7 +602,7 @@ class HexagonSensorVisualizer(QMainWindow):
                 point.setVisible(visible)  # visible 为 True 时，该数据点会在界面上正常显示
                 text_item.setVisible(visible)
             self.scatter_plot.update()
-            await asyncio.sleep(0.2)  # 0.2秒更新一次
+            await asyncio.sleep(0.1)  # 0.2秒更新一次
     
     def update_global_statistics(self):
         """更新全局统计数据"""
@@ -758,23 +758,23 @@ class HexagonSensorVisualizer(QMainWindow):
         container_layout.addStretch()
 
         # 下方控制区
-        control_layout = QGridLayout()
-        main_layout.addLayout(control_layout)
+        self.control_layout = QGridLayout()
+        main_layout.addLayout(self.control_layout)
         def create_control_layout(label_name, grid_row):
-            control_layout.addWidget(QLabel(label_name +"(N):"), grid_row, 0)
+            self.control_layout.addWidget(QLabel(label_name +"(N):"), grid_row, 0)
             force_edit = QLineEdit()
             force_edit.setValidator(QDoubleValidator())   # 只允许数字
-            control_layout.addWidget(force_edit, grid_row, 1)
+            self.control_layout.addWidget(force_edit, grid_row, 1)
 
             execute_btn = QPushButton("执行")
             execute_btn.setStyleSheet("background-color: #4CAF50; color: white; padding: 5px;")
-            control_layout.addWidget(execute_btn, grid_row, 2)
+            self.control_layout.addWidget(execute_btn, grid_row, 2)
 
             close_btn = QPushButton("关闭")
-            control_layout.addWidget(close_btn, grid_row, 3)
+            self.control_layout.addWidget(close_btn, grid_row, 3)
 
             # 连接按钮事件
-            execute_btn.clicked.connect(lambda: self._test_matrix_execute(control_layout, dialog, force_edit))
+            execute_btn.clicked.connect(lambda: self._test_matrix_execute(dialog, grid_row))
             close_btn.clicked.connect(dialog.close)
 
         create_control_layout("目标力", 0)
@@ -794,11 +794,14 @@ class HexagonSensorVisualizer(QMainWindow):
         for cb in checkboxes:
             cb.setChecked(state == Qt.Checked)
 
-    def _test_matrix_execute(self, control_layout, dialog, force_edit):
+    def _test_matrix_execute(self, dialog, grid_row):
         """执行测试：收集选中的促动器编号和目标力，并输出（可扩展为实际发送指令）"""
         try:
-            target_force = control_layout.itemAtPosition(0, 1).text()     # (0,1)对应目标值的输入框
-            increment_force = control_layout.itemAtPosition(1, 1).text()  # (1,1)对应增量值的输入框
+            if grid_row == 0:
+                target_force = self.control_layout.itemAtPosition(0, 1).widget().text()     # (0,1)对应目标值的输入框
+            else:
+                increment_force = self.control_layout.itemAtPosition(1, 1).widget().text()  # (1,1)对应增量值的输入框
+            # print(f"目标力: {target_force}-{float(target_force)}, 增加力: {increment_force}-{float(increment_force)}")
         except ValueError:
             QMessageBox.warning(dialog, "输入错误", "目标力必须为数字")
             return
@@ -810,11 +813,13 @@ class HexagonSensorVisualizer(QMainWindow):
                 if cb.isChecked():
                     act_global_index = group['start_idx'] + i  # 0-based
                     selected_actuators.append(act_global_index)
-                    Mirrors.Target[group["mirror_idx"]][i] = float(target_force) if not increment_force else (Mirrors.Target[group["mirror_idx"]][i] + float(increment_force))
-
+                    Mirrors.Target[group["mirror_idx"]][i] = float(target_force) if grid_row == 0 else (Mirrors.Target[group["mirror_idx"]][i] + float(increment_force))
+                    print(f"子镜{group['mirror_idx']+1} 促动器{act_global_index} 设置目标力: {Mirrors.Target[group['mirror_idx']][i]} N")
         if not selected_actuators:
             QMessageBox.information(dialog, "提示", "未选择任何促动器")
             return
+        # self.control_layout.itemAtPosition(0, 1).widget().clear()
+        # self.control_layout.itemAtPosition(1, 1).widget().clear()
 
 
 def palette_set():
