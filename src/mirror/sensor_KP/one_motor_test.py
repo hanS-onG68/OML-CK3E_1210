@@ -5,7 +5,7 @@ import asyncio
 from typing import Optional, List
 # from mirror.sensor_KP.sensor import SensorReader   # 需要替换成国产
 # from mirror.amplifier.domestic_amplifier import Amplifier
-from mirror.pmac_controller import PMAC_Controller
+from mirror.pmac_controller import PMAC_Controller, SSH_Config
 import csv
 from mirror.sensor_KP.plot import DataAnalyzer
 from mirror.logger import setup_logger
@@ -204,7 +204,7 @@ class OneMotorTest:
                 else:
                     # 连接已断开的情况下尝试重连停电机
                     self.logger.warning(f"PMAC连接已断开，尝试重连停电机{self.motor_id}")
-                    async with PMAC_Controller() as pmac_reconnect:
+                    async with PMAC_Controller(SSH_Config(host = "192.168.0.201")) as pmac_reconnect:
                         await pmac_reconnect.connect()
                         await pmac_reconnect.exec_command(f"#{self.motor_id}k")
                         self.logger.info(f"✅ 电机{self.motor_id}重连后，去使能成功")

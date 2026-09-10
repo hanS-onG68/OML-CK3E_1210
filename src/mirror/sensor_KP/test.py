@@ -1,7 +1,8 @@
 import numpy as np
 
-s = ["#123  ", " 56#"]
+data_list = list(range(0, -300000, -5000))
 
-t = [ss.strip('#') for ss in s]
+print(f"Original data_list: {data_list}")
 
-print(t)
+data_list.reverse()  # 反转列表，使其从大到小排列
+print(f"Reversed data_list: {data_list}")

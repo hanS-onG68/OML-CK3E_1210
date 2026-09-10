@@ -55,14 +55,15 @@ class Mirrors:
 
         # 调试时选择：
         Mirrors.Target.fill(10.0)
-        self.Available[0, 0] = True    # 选择几号边缘子镜
+        self.Available[1, :] = True    # 选择几号边缘子镜
 
 
         # 映射索引
         mapping_file = resources.files("mirror.mirror_control").joinpath("settings/Actuator_Mapping.csv")
         self.mapping = np.loadtxt(mapping_file, delimiter=',', skiprows=1, dtype=int)
         self.actuator_id, self.controller_id, self.axis_id, self.amplifer_id, self.channel_id = self.mapping.T    # 配置表拆成5个列向量
-        self._sensor_idx = self.amplifer_id*SENSORS_PER_AMP + self.channel_id                                     # 逻辑促动器空间到物理传感器空间的映射（1*150）
+        self._sensor_idx = self.amplifer_id*SENSORS_PER_AMP + self.channel_id
+        self._axis_idx = self.axis_id.reshape(MIRRORS_COUNT, ACTUATORS_PER_MIRROR)                                # 逻辑促动器空间到物理传感器空间的映射（1*150）
 
         # 共享内存
         self.shm = self._create_shm()
@@ -72,7 +73,7 @@ class Mirrors:
         self._timestamp = self._buffer[CAPACITY_SENSORS:]   # 传感器时间戳视图，零拷贝
 
         # 控制器
-        self._create_controllers()
+        # self._create_controllers()
 
         # 传感器
         self._create_amplifiers()
@@ -114,9 +115,14 @@ class Mirrors:
     def _create_controllers(self):
         ip_file = resources.files("mirror.mirror_control").joinpath("settings/Controller_IP.csv")
         self.controller_ips = self._load_hardware_config(ip_file, col=1, defaults=DEFAULT_CTRL_IPS)
+        print(f"controller_ips = {self.controller_ips}")
         self.Controllers = dict()
         for ctrl_id in np.unique(self.controller_id[self.Available.ravel()]):
+            print(f"ctrl_id = {ctrl_id}")
+            if ctrl_id != 1:  # 临时调试
+                continue
             ctrl_ip = self.controller_ips[ctrl_id]
+            print(f"ctrl_ip = {ctrl_ip}")
             config = SSH_Config(ctrl_ip)
             controller = PMAC_Controller(config)
             asyncio.get_event_loop().create_task(controller.connect())
@@ -188,49 +194,50 @@ class Mirrors:
     async def run(self):
         try:
             while True:
-                await asyncio.sleep(5)
+                await asyncio.sleep(1)
                 now_ts = time.time()
                 
-                # 获取传感器最新数据
+                # # 获取传感器最新数据
                 self.Force, self.Force_TS = self.get_force()
                 
-                # # 全矩阵运算，效率不高，但意思清晰。如果要追求效率，可以先用条件卡住矩阵
-                Error = Mirrors.Target - self.Force
-                raw = Error * self.K_p
+                # # # 全矩阵运算，效率不高，但意思清晰。如果要追求效率，可以先用条件卡住矩阵
+                # Error = Mirrors.Target - self.Force
+                # raw = Error * self.K_p
                 
-                # # 严格条件筛选
-                valid_mask = (self.Available &
-                        ~np.isnan(self.Force) &
-                        (Mirrors.Target>self.Force_limit_neg) &
-                        (Mirrors.Target<self.Force_limit_pos) &
-                        (self.Force_TS - now_ts < self.Force_timeout)
-                )
-                need_move_mask = valid_mask & (np.abs(Error) > self.Threshold)
+                # # # 严格条件筛选
+                # valid_mask = (self.Available &
+                #         ~np.isnan(self.Force) &
+                #         (Mirrors.Target>self.Force_limit_neg) &
+                #         (Mirrors.Target<self.Force_limit_pos) &
+                #         (self.Force_TS - now_ts < self.Force_timeout)
+                # )
+                # need_move_mask = valid_mask & (np.abs(Error) > self.Threshold)
                 
-                # # 转换成各促动器电机补偿步数
-                self.Steps = np.where(need_move_mask, np.clip(raw, -self.steps_limit, self.steps_limit), 0.0)
+                # # # 转换成各促动器电机补偿步数
+                # self.Steps = np.where(need_move_mask, np.clip(raw, -self.steps_limit, self.steps_limit), 0.0)
 
                 
-                with pd.option_context('display.max_rows', 6, 'display.max_columns', 25, 'display.precision', 2):
-                    self.logger.info(f"self.Force:\n{pd.DataFrame(self.Force)}\n")
-                    self.logger.info(f"raw_Steps:\n{pd.DataFrame(raw)}\n")
-                    self.logger.info(f"self.Steps:\n{pd.DataFrame(self.Steps)}\n")
+                # with pd.option_context('display.max_rows', 6, 'display.max_columns', 25, 'display.precision', 2):
+                #     self.logger.info(f"self.Force:\n{pd.DataFrame(self.Force)}\n")
+                #     self.logger.info(f"raw_Steps:\n{pd.DataFrame(raw)}\n")
+                #     self.logger.info(f"self.Steps:\n{pd.DataFrame(self.Steps)}\n")
                     
                 # # 控制电机运行
-                cmds = self.build_motor_commands(self.Steps)
-                print(f"CMDS= {cmds}")
-                await self.execute_commands(cmds)
+                # cmds = self.build_motor_commands(self.Steps)
+                # print(f"CMDS= {cmds}")
+                # await self.execute_commands(cmds)
         except KeyboardInterrupt:
             pass
 
     def build_motor_commands(self, steps):
         commands = dict()
         for ctrl_id in range(MIRRORS_COUNT):
-            axes = np.nonzero(self.Steps[ctrl_id])[0]
+            non_pos = np.nonzero(self.Steps[ctrl_id])[0]  # 返回当前子镜中step不为0的索引 
+            axes = self._axis_idx[ctrl_id][non_pos]
             if len(axes) == 0:
                 continue
-            parts = [f"#{axis_id+1:02d}J:{int(self.Steps[ctrl_id, axis_id])}" for axis_id in axes]
-            cmd = " ".join(parts)
+            parts = [f"#{axis_id:02d}J:{int(self.Steps[ctrl_id, non_pos[ind]])}" for ind, axis_id in enumerate(axes)]
+            cmd = " ".join(parts)  # 一个子镜需要动的促动器的命令的集合
             commands[ctrl_id] = cmd
         return commands
 

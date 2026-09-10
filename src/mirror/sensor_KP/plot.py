@@ -253,14 +253,14 @@ class DataAnalyzer:
                 return result
 
             # 先做相关性分析
-            if not self.is_linear_relationship(x_col, y_col):
-                logger.warning("❌ 数据线性不相关，不再继续绘图")
-                return
+            # if not self.is_linear_relationship(x_col, y_col):
+            #     logger.warning("❌ 数据线性不相关，不再继续绘图")
+            #     return
 
             # 绘制趋势图
-            # result["trend_img"] = self.plot_data_trend(x_col, y_col)
+            result["trend_img"] = self.plot_data_trend(x_col, y_col)
             # 绘制拟合图
-            self.slope, self.intercept, _, result["fit_img"] = self.plot_linear_relationship(x_col, y_col)
+            # self.slope, self.intercept, _, result["fit_img"] = self.plot_linear_relationship(x_col, y_col)
             # one_actuator_info["拟合图名称"] = f"{self.file_basename}_拟合图"
             # print(f"{self.file_basename}_拟合图")
             # one_actuator_info["拟合图"] = result["fit_img"]

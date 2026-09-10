@@ -137,11 +137,12 @@ class HexagonSensorVisualizer(QMainWindow):
     
     def setup_ui(self):
         """设置用户界面"""
-        self.setWindowTitle("ME传感器实时监控系统 - 蜂巢紧密排列")
+        self.setWindowTitle("传感器实时监控系统")
         
         # 获取屏幕尺寸，设置窗口大小
-        screen = QApplication.primaryScreen().geometry()
-        self.setGeometry(100, 100, int(screen.width() * 0.5), int(screen.height() * 0.75))
+        screen = QApplication.primaryScreen().availableGeometry()
+        self.setGeometry(100, 100, int(screen.width() * 0.5), int(screen.height() * 0.9))
+        self.move(screen.left() + 50, screen.top() + 20)
         
         # 中央部件
         central_widget = QWidget()
@@ -157,11 +158,13 @@ class HexagonSensorVisualizer(QMainWindow):
         control_panel = self.create_control_panel()
         
         # 添加到布局
-        main_layout.addWidget(plot_widget, 4)
+        main_layout.addWidget(plot_widget, 5)
         main_layout.addWidget(control_panel, 1)
         
         # 设置控制面板固定宽度
         #control_panel.setFixedWidth(380)
+        control_panel.setMinimumWidth(200)   # 保证不被压得太窄
+        control_panel.setMaximumWidth(300)   # 可选：防止过宽
         
     def create_plot_widget(self) -> pg.GraphicsLayoutWidget:
         """创建pyqtgraph绘图部件"""
@@ -291,15 +294,20 @@ class HexagonSensorVisualizer(QMainWindow):
         layout = QVBoxLayout(panel)
         layout.setSpacing(5)
         layout.setContentsMargins(5, 5, 5, 5)
+
+        inner_widget = QWidget()
+        inner_layout = QVBoxLayout(inner_widget)
+        inner_layout.setSpacing(5)
+        inner_layout.setContentsMargins(0, 0, 0, 0)
         
         # 标题
         title = QLabel("传感器监视系统")
         title.setStyleSheet("font-size: 16px; font-weight: bold; color: #4CAF50;")
         title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+        inner_layout.addWidget(title)
         
         # 分隔线
-        layout.addWidget(self.create_h_line())
+        inner_layout.addWidget(self.create_h_line())
 
         # 视图控制
         view_group = QGroupBox("视图控制")
@@ -325,7 +333,7 @@ class HexagonSensorVisualizer(QMainWindow):
         view_layout.addWidget(view_instructions)
         
         view_group.setLayout(view_layout)
-        layout.addWidget(view_group)
+        inner_layout.addWidget(view_group)
         
         # 数据更新频率
         freq_group = QGroupBox("更新设置")
@@ -341,7 +349,7 @@ class HexagonSensorVisualizer(QMainWindow):
         freq_layout.addLayout(freq_sub_layout)
         
         freq_group.setLayout(freq_layout)
-        layout.addWidget(freq_group)
+        inner_layout.addWidget(freq_group)
         
         # 颜色映射选择
         cmap_group = QGroupBox("显示设置")
@@ -358,7 +366,7 @@ class HexagonSensorVisualizer(QMainWindow):
         cmap_layout.addLayout(cmap_sub_layout)
         
         cmap_group.setLayout(cmap_layout)
-        layout.addWidget(cmap_group)
+        inner_layout.addWidget(cmap_group)
         
         # 传感器筛选
         filter_group = QGroupBox("筛选设置")
@@ -380,17 +388,17 @@ class HexagonSensorVisualizer(QMainWindow):
         filter_layout.addLayout(threshold_layout)
 
         # 调测使用
-        mir_sub_layout = QHBoxLayout()
-        mir_sub_layout.addWidget(QLabel("要显示的子镜:"))
+        mir_sub_layout = QGridLayout()
+        mir_sub_layout.addWidget(QLabel("要显示的子镜:"), 0, 0, 1, 3)
         for mir_idx in range(self.mirror_count):
             self.mir_check[mir_idx] = QCheckBox(f"子镜{mir_idx+1}")
             self.mir_check[mir_idx].stateChanged.connect(self.update_visualization)
-            mir_sub_layout.addWidget(self.mir_check[mir_idx])
+            mir_sub_layout.addWidget(self.mir_check[mir_idx], mir_idx // 3 + 1, mir_idx % 3)
         filter_layout.addLayout(mir_sub_layout)
 
     
         filter_group.setLayout(filter_layout)
-        layout.addWidget(filter_group)
+        inner_layout.addWidget(filter_group)
         
         # 全局数据统计
         global_stats_group = QGroupBox("全局数据统计")
@@ -406,7 +414,7 @@ class HexagonSensorVisualizer(QMainWindow):
         global_stats_layout.addWidget(self.std_label)
         
         global_stats_group.setLayout(global_stats_layout)
-        layout.addWidget(global_stats_group)
+        inner_layout.addWidget(global_stats_group)
         
         # 分子镜数据统计（现在只有6个子镜）
         mirror_stats_group = QGroupBox("分子镜数据统计")
@@ -448,7 +456,7 @@ class HexagonSensorVisualizer(QMainWindow):
         mirror_stats_group_layout = QVBoxLayout()
         mirror_stats_group_layout.addWidget(mirror_stats_scroll)
         mirror_stats_group.setLayout(mirror_stats_group_layout)
-        layout.addWidget(mirror_stats_group)
+        inner_layout.addWidget(mirror_stats_group)
         
         # 控制按钮
         btn_group = QGroupBox("控制")
@@ -476,9 +484,17 @@ class HexagonSensorVisualizer(QMainWindow):
         btn_layout.addWidget(self.export_btn)        
         
         btn_group.setLayout(btn_layout)
-        layout.addWidget(btn_group)
+        inner_layout.addWidget(btn_group)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)      # 关键：让内部 widget 宽度跟随
+        scroll.setWidget(inner_widget)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # 不需要横向滚动条
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        layout.addWidget(scroll)
         
-        layout.addStretch()
+        # layout.addStretch()
         return panel
     
     def create_h_line(self):
@@ -586,7 +602,7 @@ class HexagonSensorVisualizer(QMainWindow):
                     [item.setVisible(False) for item in self.current_text_items[i, :]]  # 隐藏该子镜的所有传感器文本项
                     continue
                 value = self.sensor_data[i, j]
-                text_item.setText(f"{value:.1f}")
+                text_item.setText(f"{value:.2f}")
 
                 if np.isnan(value):
                     color = QColor(128, 128, 128)  # 灰色
@@ -662,7 +678,6 @@ class HexagonSensorVisualizer(QMainWindow):
                     writer = csv.writer(csvfile)
                     writer.writerow(['传感器ID', '子镜编号', 'X坐标(米)', 'Y坐标(米)', '数值', '状态'])
                     
-                    # for i, (x, y) in enumerate(self.sensor_positions):
                     sensor_positions = self.sensor_positions.reshape(-1, 2)  # 展平为150 x 2的形状
                     for idx, (x, y) in enumerate(sensor_positions):
                         i, j = idx // self.actuators_per_mirror, idx % self.actuators_per_mirror   # i表示镜子id,j表示传感器相对该子镜的编号， i*25+j就是传感器的物理位置，对应文件setting/Actuator_Mapping.csv中的actuator_id（i = actuator_id）
@@ -732,8 +747,8 @@ class HexagonSensorVisualizer(QMainWindow):
                 grid_layout.addWidget(cb, row, col)
                 self.checkboxes.append(cb)
 
-            # 联动：对应位置的两个径向促动器需要联动
-            for i in range(1, 13, 2):
+            # 联动：对应位置的两个径向促动器需要联动(内圈：200N，外圈：100N)
+            for i in range(2, 14, 2):  # 内圈
                 self.checkboxes[i].toggled.connect(lambda checked, cb=self.checkboxes[i+12]: self.sync_cb(checked, cb))
                 self.checkboxes[i+12].toggled.connect(lambda checked, cb=self.checkboxes[i]: self.sync_cb(checked, cb))
 
@@ -801,7 +816,6 @@ class HexagonSensorVisualizer(QMainWindow):
                 target_force = self.control_layout.itemAtPosition(0, 1).widget().text()     # (0,1)对应目标值的输入框
             else:
                 increment_force = self.control_layout.itemAtPosition(1, 1).widget().text()  # (1,1)对应增量值的输入框
-            # print(f"目标力: {target_force}-{float(target_force)}, 增加力: {increment_force}-{float(increment_force)}")
         except ValueError:
             QMessageBox.warning(dialog, "输入错误", "目标力必须为数字")
             return
@@ -818,8 +832,6 @@ class HexagonSensorVisualizer(QMainWindow):
         if not selected_actuators:
             QMessageBox.information(dialog, "提示", "未选择任何促动器")
             return
-        # self.control_layout.itemAtPosition(0, 1).widget().clear()
-        # self.control_layout.itemAtPosition(1, 1).widget().clear()
 
 
 def palette_set():
@@ -842,11 +854,15 @@ if __name__ == "__main__":
     import asyncio
     try:
         from qasync import QEventLoop, asyncSlot
+        # ★★★ 在创建 QApplication 之前设置 ★★★
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
         app = QApplication(sys.argv)
         with QEventLoop(app) as loop:
             asyncio.set_event_loop(loop)
             palette_set()
             window = HexagonSensorVisualizer()
+            # window.showMaximized()   # 直接最大化
             window.show()
             loop.create_task(window.monitor_task())
             loop.run_forever()
