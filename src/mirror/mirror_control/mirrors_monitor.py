@@ -174,7 +174,7 @@ class HexagonSensorVisualizer(QMainWindow):
         # 创建主绘图区域
         self.main_plot = plot_widget.addPlot(title="传感器分布图", row=0, col=0)
         self.main_plot.setAspectLocked(True)
-        self.main_plot.showGrid(x=True, y=True, alpha=0.3)
+        # self.main_plot.showGrid(x=True, y=True, alpha=0.3)
         self.main_plot.setLabel('left', 'Y坐标 (米)')
         self.main_plot.setLabel('bottom', 'X坐标 (米)')
         
@@ -572,7 +572,16 @@ class HexagonSensorVisualizer(QMainWindow):
             text.setPos(x, y - 0.12)
             text.setColor('#ffffff')
             text.setFont(QFont('Arial', 14))
+
+            phy_id = Actuator2Pon_Map[i+1][j]  # 促动器编号从1开始显示
+            pos_flag = pg.TextItem(f"{phy_id}", anchor=(0.5, 0.5))
+            pos_flag.setPos(x, y)
+            pos_flag.setColor('#ffff00')
+            pos_flag.setFont(QFont('Arial', 10))
+
+            self.main_plot.addItem(pos_flag)
             self.main_plot.addItem(text)
+
             self.current_text_items[i, j] = text
         self.scatter_plot.update()
     

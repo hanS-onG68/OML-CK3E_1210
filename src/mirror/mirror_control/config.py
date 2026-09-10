@@ -35,14 +35,25 @@ MOTOR_STEPS_LIMIT = 5000
 FORCE_TIMEOUT = 2.0
 
 
+outer2inner_Map = {
+    "6a": "16",   "6b": "19",
+    "3a": "10",   "3b": "13",
+    "5a": "15",   "5b": "18",
+    "2a": "9",    "2b": "12",
+    "4a": "14",   "4b": "17",
+    "1a": "8",    "1b": "11",
+}
+
 Actuator2Pon_Map = {
     1: {    # 1号边缘子镜：逻辑驱动器编号到物理位置编号的映射
-        0:  "7", 1:  "1b", 2:  "11", 3:  "6a", 4:  "16", 5:  "3a", 6:  "10", 7:  "5a", 8:  "15", 9:  "2a",
-        10: "9", 11: "4a", 12: "14", 13: "1a", 14: "8",  15: "6b", 16: "19", 17: "3b", 18: "13", 19: "5b", 20: "18", 21: "2b", 22: "12", 23: "4b", 24: "17"
+            0:  "7",  # 中心
+            1:  "1b",                 3:  "6a",                 5:  "3a",                 7:  "5a",                 9:  "2a",                  11:  "4a",                 13:  "1a",                 15:  "6b",                 17:  "3b",                 19: "5b",                  21: "2b",                  23: "4b",                    # outer
+            2: outer2inner_Map["1b"], 4: outer2inner_Map["6a"], 6: outer2inner_Map["3a"], 8: outer2inner_Map["5a"], 10: outer2inner_Map["2a"], 12: outer2inner_Map["4a"], 14: outer2inner_Map["1a"], 16: outer2inner_Map["6b"], 18: outer2inner_Map["3b"], 20: outer2inner_Map["5b"], 22: outer2inner_Map["2b"], 24: outer2inner_Map["4b"]    # inner
     },
     2: {    # 2号边缘子镜：逻辑驱动器编号到物理位置编号的映射
-        0:  "7", 1:  "3a", 2:  "11", 3:  "5a", 4:  "16", 5:  "2a", 6:  "10", 7:  "4a", 8:  "15", 9:  "1a",
-        10: "9", 11: "6b", 12: "14", 13: "3b", 14: "8",  15: "5b", 16: "19", 17: "2b", 18: "13", 19: "4b", 20: "18", 21: "1b", 22: "12", 23: "6a", 24: "17"
+        0:  "7",  # 中心
+        1:  "3a",                 3:  "5a",                 5:  "2a",                 7:  "4a",                 9:  "1a",                  11:  "6b",                 13:  "3b",                 15:  "5b",                 17:  "2b",                 19: "4b",                  21: "1b",                  23: "6a",                    # outer
+        2: outer2inner_Map["3a"], 4: outer2inner_Map["5a"], 6: outer2inner_Map["2a"], 8: outer2inner_Map["4a"], 10: outer2inner_Map["1a"], 12: outer2inner_Map["6b"], 14: outer2inner_Map["3b"], 16: outer2inner_Map["5b"], 18: outer2inner_Map["2b"], 20: outer2inner_Map["4b"], 22: outer2inner_Map["1b"], 24: outer2inner_Map["6a"]    # inner
     },
     3: {    # 3号边缘子镜：逻辑驱动器编号到物理位置编号的映射
         0:  "7", 1:  "2a", 2:  "11", 3:  "4a", 4:  "16", 5:  "1a", 6:  "10", 7:  "6b", 8:  "15", 9:  "3b",
