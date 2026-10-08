@@ -22,7 +22,7 @@ SHM_NAME = "QUEST_Mirrors_Control"
 
 DEFAULT_CTRL_IPS = [f"192.168.0.{200+i}" for i in range(2)]
 # DEFAULT_AMP_PORTS = [f"/dev/ttyr{i:02d}" for i in range(19)]      # 进口放大器
-DEFAULT_AMP_PORTS = [f"192.168.0.{i}" for i in range(100, 104, 1)]  # 国产放大器
+DEFAULT_AMP_PORTS = [f"192.168.0.{i}" for i in range(104, 107, 1)]  # 国产放大器
 
 
 
@@ -46,9 +46,9 @@ outer2inner_Map = {
 
 Actuator2Pon_Map = {
     1: {    # 1号边缘子镜：逻辑驱动器编号到物理位置编号的映射
-            0:  "7",  # 中心
-            1:  "1b",                 3:  "6a",                 5:  "3a",                 7:  "5a",                 9:  "2a",                  11:  "4a",                 13:  "1a",                 15:  "6b",                 17:  "3b",                 19: "5b",                  21: "2b",                  23: "4b",                    # outer
-            2: outer2inner_Map["1b"], 4: outer2inner_Map["6a"], 6: outer2inner_Map["3a"], 8: outer2inner_Map["5a"], 10: outer2inner_Map["2a"], 12: outer2inner_Map["4a"], 14: outer2inner_Map["1a"], 16: outer2inner_Map["6b"], 18: outer2inner_Map["3b"], 20: outer2inner_Map["5b"], 22: outer2inner_Map["2b"], 24: outer2inner_Map["4b"]    # inner
+        0:  "7",  # 中心
+        1:  "1b",                 3:  "6a",                 5:  "3a",                 7:  "5a",                 9:  "2a",                  11:  "4a",                 13:  "1a",                 15:  "6b",                 17:  "3b",                 19: "5b",                  21: "2b",                  23: "4b",                    # outer
+        2: outer2inner_Map["1b"], 4: outer2inner_Map["6a"], 6: outer2inner_Map["3a"], 8: outer2inner_Map["5a"], 10: outer2inner_Map["2a"], 12: outer2inner_Map["4a"], 14: outer2inner_Map["1a"], 16: outer2inner_Map["6b"], 18: outer2inner_Map["3b"], 20: outer2inner_Map["5b"], 22: outer2inner_Map["2b"], 24: outer2inner_Map["4b"]    # inner
     },
     2: {    # 2号边缘子镜：逻辑驱动器编号到物理位置编号的映射
         0:  "7",  # 中心

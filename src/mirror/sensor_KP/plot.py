@@ -253,22 +253,22 @@ class DataAnalyzer:
                 return result
 
             # 先做相关性分析
-            # if not self.is_linear_relationship(x_col, y_col):
-            #     logger.warning("❌ 数据线性不相关，不再继续绘图")
-            #     return
+            if not self.is_linear_relationship(x_col, y_col):
+                logger.warning("❌ 数据线性不相关，不再继续绘图")
+                return
 
             # 绘制趋势图
-            result["trend_img"] = self.plot_data_trend(x_col, y_col)
+            # result["trend_img"] = self.plot_data_trend(x_col, y_col)
             # 绘制拟合图
-            # self.slope, self.intercept, _, result["fit_img"] = self.plot_linear_relationship(x_col, y_col)
-            # one_actuator_info["拟合图名称"] = f"{self.file_basename}_拟合图"
-            # print(f"{self.file_basename}_拟合图")
-            # one_actuator_info["拟合图"] = result["fit_img"]
-            # test_time = re.search(r"data_(.*?)_拟合图", one_actuator_info["拟合图名称"])
-            # if test_time:
-            #     one_actuator_info["测试时间"] = test_time.group(1)
-            # one_actuator_info["线性方程"] = f"y = {self.slope:.4f}x + {self.intercept:.4f}"
-            # one_actuator_info["线性度"] = f"{self.slope:.4f}"
+            self.slope, self.intercept, _, result["fit_img"] = self.plot_linear_relationship(x_col, y_col)
+            one_actuator_info["拟合图名称"] = f"{self.file_basename}_拟合图"
+            print(f"{self.file_basename}_拟合图")
+            one_actuator_info["拟合图"] = result["fit_img"]
+            test_time = re.search(r"data_(.*?)_拟合图", one_actuator_info["拟合图名称"])
+            if test_time:
+                one_actuator_info["测试时间"] = test_time.group(1)
+            one_actuator_info["线性方程"] = f"y = {self.slope:.4f}x + {self.intercept:.4f}"
+            one_actuator_info["线性度"] = f"{self.slope:.4f}"
 
             # 回写统计结果
             result.update({

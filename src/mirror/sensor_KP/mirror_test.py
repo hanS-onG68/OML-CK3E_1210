@@ -93,7 +93,7 @@ class MirrorsTest:
     def get_domestic_amplifier_info(self):  # 国产放大器
         dev_info = []
         start_ip = "192.168.0."  # 起始ip
-        for id in range(104, 105, 1): # 全部需要19个放大器，测试时可根据需要收放
+        for id in range(105, 106, 1): # 全部需要19个放大器，测试时可根据需要收放
             current_ip = start_ip + str(id)
             dev_info.append(current_ip)
         return dev_info
@@ -146,9 +146,9 @@ class MirrorsTest:
                 part2 = list(range(40000, -780001, -20000))
                 part3 = list(range(-780000, -800001, -5000))
                 # 拼接列表
-                data_list = part1 + part2[1:] + part3[1:]
+                # data_list = part1 + part2[1:] + part3[1:]
 
-                # data_list = list(range(0, -240000, -5000))
+                data_list = list(range(0, -160000, -5000))
                 # data_list.reverse()  # 反转列表，使其从大到小排列
 
                 await motor_test.run_test(
@@ -173,7 +173,7 @@ class MirrorsTest:
 
         try:
             tasks = []
-            for chan_id in range(1, 9):   # 每个放大器有8个通道，测试每个通道对应的电机
+            for chan_id in range(1, 5):   # 每个放大器有8个通道，测试每个通道对应的电机
                 try:
                     matched_chan = self.df[(self.df['Amplifier_ip'] == amp_ip) & (self.df['Channel_id'] == chan_id)]
                     if matched_chan.empty:
@@ -207,11 +207,11 @@ class MirrorsTest:
                 task = asyncio.create_task(_wrap_motor_test(motor))
                 tasks.append(task)
             temp_acuatorr_infos = await asyncio.gather(*tasks, return_exceptions=True)
-            # for actuator in temp_acuatorr_infos:
-            #     print(f"当前促动器的信息: {actuator}")
-            #     unique_key = actuator["拟合图名称"]  # 生成全局唯一的key，永远不会重复覆盖
-            #     self.all_actuator_info[unique_key] = actuator
-            #     self.logger.info(f"✅ 促动器{unique_key}结果已汇总到全局记录")
+            for actuator in temp_acuatorr_infos:
+                print(f"当前促动器的信息: {actuator}")
+                unique_key = actuator["拟合图名称"]  # 生成全局唯一的key，永远不会重复覆盖
+                self.all_actuator_info[unique_key] = actuator
+                self.logger.info(f"✅ 促动器{unique_key}结果已汇总到全局记录")
             self.logger.info(f"✅ 放大器{amp_ip}所有通道测试完成")
         except Exception as e:
             self.logger.error(f"❌ 放大器测试出现异常: {str(e)}")
@@ -275,10 +275,10 @@ class MirrorsTest:
 async def sensor_test(isDomestic:bool, isMergeCell:bool, mirrorId:int):
     async with MirrorsTest(is_domestic=isDomestic, mirror_id=mirrorId) as test:
         await test.main()
-        # excel_path=f"./mirror{test.mirror_id}_data/sensor_data.xlsx"
-        # print(f"{test.all_actuator_info}")
-        # excel_handler = ExcelDataHandler(excel_path, test.all_actuator_info, is_merge_cell=isMergeCell)
-        # excel_handler.main()
+        excel_path=f"./mirror{test.mirror_id}_data/sensor_data.xlsx"
+        print(f"{test.all_actuator_info}")
+        excel_handler = ExcelDataHandler(excel_path, test.all_actuator_info, is_merge_cell=isMergeCell)
+        excel_handler.main()
 
 if __name__ == "__main__":
     try:
