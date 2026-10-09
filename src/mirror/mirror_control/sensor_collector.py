@@ -21,7 +21,6 @@ _AMP_FACTORY = {
 async def collector(amp_info:str, amp_id:int, shm_name:str, stop_event:Event, start_time:float, *, interval:float=2.0, data_rate:float=1.0, debug=False, is_domestic:bool = True):   # 单独的* 强制后续参数必须用关键字传递
     """单个Amplifier的子进程执行函数"""
     logger = OCS_Logger(name=f"{amp_id:02d}", debug=debug)
-    # amplifier = Amplifier(path=path, amp_id=amp_id, data_rate=data_rate)  # 进口放大器
     amplifier = _AMP_FACTORY[is_domestic](amp_info, amp_id, data_rate)
     await amplifier.connect()
     logger.info(f"amplifier is CONNECTED")

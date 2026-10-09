@@ -1,4 +1,4 @@
-import sys
+import sys, atexit
 import numpy as np
 from PySide2.QtWidgets import *
 from PySide2.QtCore import *

@@ -88,7 +88,7 @@ class Amplifier:  # 国产放大器
                 logger.error(f"读取失败: {response}")
                 return None
 
-            logger.info(f"response = {response}, response.registers: {response.registers}, len = {len(response.registers)}")
+            # logger.info(f"response = {response}, response.registers: {response.registers}, len = {len(response.registers)}")
             try:
                 results = {}
                 for index in range(0, len(response.registers), 2):
@@ -96,7 +96,7 @@ class Amplifier:  # 国产放大器
                     decoder = BinaryPayloadDecoder.fromRegisters(reg_pair, byteorder=Endian.BIG, wordorder=Endian.BIG)
                     val = decoder.decode_32bit_float()
                     channel = int(index / 2 + 1)
-                    logger.info(f"通道{channel}测量值: {val:.4f}")
+                    logger.info(f"{self.host}--通道{channel}测量值: {val:.4f}")
                     results[f"channel_{channel}"] = val
                 return results
             except Exception as e:
@@ -114,7 +114,7 @@ class Amplifier:  # 国产放大器
         val = await self.read_channels_measure()
         values = []
         if val is not None:
-            logger.info(f"当前测量值: {val}")
+            # logger.info(f"[{self.host}] 当前测量值: {val}")
             values.append(val["channel_1"])
             values.append(val["channel_2"])
             values.append(val["channel_3"])
@@ -125,7 +125,7 @@ class Amplifier:  # 国产放大器
             values.append(val["channel_8"])
             timestamp = datetime.now()
             result = (self.host, timestamp, values)
-            logger.info(f"host:{self.host}, fetch data: {result}")
+            # logger.info(f"host:{self.host}, fetch data: {result}")
             return result
         else:
             logger.error("获取测量值失败, 返回None")

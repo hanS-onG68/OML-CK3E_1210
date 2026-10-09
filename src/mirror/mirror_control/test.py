@@ -12,3 +12,12 @@ data = np.char.strip(data[:,:]).astype(int)
 actuator_id, controller_id, axis_id, amplifier_id, channel_id = data.T
 print(f"actuator_id = {actuator_id}, controller_id = {controller_id}, axis_id = {axis_id}, amplifier_id = {amplifier_id}, channel_id = {channel_id}")
 
+kp_file = resources.files("mirror.mirror_control").joinpath("settings/Coefficient_K_p.csv")
+K_p = np.loadtxt(kp_file, delimiter=',', skiprows=1)    # 增益
+print(f"K_p = {K_p}, K_p.shape = {K_p.shape}")
+
+target_file = resources.files("mirror.mirror_control").joinpath("settings/Initial_Target.csv") 
+target_data = np.loadtxt(target_file, delimiter=',', dtype=str, skiprows=1, comments='#')
+initial_target_force = np.char.strip(target_data[:, 1]).astype(float)
+Target = initial_target_force.reshape(6, 25)
+print(f"Target = {Target}, Target.shape = {Target.shape}")

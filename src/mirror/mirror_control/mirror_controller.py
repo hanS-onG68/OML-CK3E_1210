@@ -43,8 +43,10 @@ class Mirrors:
         self.Force = np.zeros((MIRRORS_COUNT, ACTUATORS_PER_MIRROR))        # 力传感器数据
         self.Force_TS = np.zeros((MIRRORS_COUNT, ACTUATORS_PER_MIRROR))     # 力传感器时间戳
         self.Error = np.zeros((MIRRORS_COUNT, ACTUATORS_PER_MIRROR))        # 目标值与实际值之间的偏差
+
         kp_file = resources.files("mirror.mirror_control").joinpath("settings/Coefficient_K_p.csv")
         self.K_p = np.loadtxt(kp_file, delimiter=',', skiprows=1)    # 增益
+
         threshold_file = resources.files("mirror.mirror_control").joinpath("settings/Threshold.csv")
         self.Threshold = np.loadtxt(threshold_file, delimiter=',', skiprows=1)              # 阈值：对应位置的传感器不超过该位置的阈值时，不需要动
         self.Force_limit_pos = np.ones((MIRRORS_COUNT, ACTUATORS_PER_MIRROR))*100.0         # 力值上限
@@ -57,13 +59,12 @@ class Mirrors:
         self.Available = np.full((MIRRORS_COUNT, ACTUATORS_PER_MIRROR), False, dtype=bool)  # 该位置是否可用
 
         # 调试时选择：
-        # Mirrors.Target[0] = {-0.35, -0.82, -0.57, -0.61, 0.23, -0.78, 0.23, -1.02, 0.79, -0.85, 0.68, -0.78, 0.71, -0.84, 0.95, }
         self.Available[0, :] = True    # 选择几号边缘子镜
 
 
         # 映射索引
         mapping_file = resources.files("mirror.mirror_control").joinpath("settings/Actuator_Mapping.csv")
-        mapping_data = np.loadtxt(mapping_file, delimiter=',', skiprows=1, dtype=int)
+        mapping_data = np.loadtxt(mapping_file, delimiter=',', skiprows=1, dtype=str)
         self.mapping = np.char.strip(mapping_data[:,:]).astype(int)
         self.actuator_id, self.controller_id, self.axis_id, self.amplifer_id, self.channel_id = self.mapping.T    # 配置表拆成5个列向量
         self._sensor_idx = self.amplifer_id*SENSORS_PER_AMP + self.channel_id
@@ -138,17 +139,13 @@ class Mirrors:
         def run_collector(amp_info:str, amp_id:int, shm_name:str, stop_event:Event, start_time:float, *, interval:float=2.0, data_rate:float=1.0, debug=False, is_domestic:bool = True):
             asyncio.run(collector(amp_info, amp_id, shm_name, stop_event, start_time, interval=1.0, data_rate=1.0, debug=debug, is_domestic=is_domestic))
         amp_file = resources.files("mirror.mirror_control").joinpath("settings/Domestic_Amplifier_Mapping.csv") if self.is_domestic else resources.files("mirror.mirror_control").joinpath("settings/Imported_Amplifier_Mapping.csv")
-        # self.amplifers = self._load_hardware_config(amp_file, col=1, defaults=DEFAULT_AMP_PORTS)
         self.amplifers = self._load_hardware_config(amp_file)
         self.logger.info(f"amplifers = {self.amplifers}")
         self.start_time = time.monotonic()
         self.Amplifiers = dict()
         for amp_id in np.unique(self.amplifer_id[self.Available.ravel()]):
-            self.logger.info(f"amp_id = {amp_id}")
-            # if amp_id >= len(self.amplifers):
-            #     continue
+            # self.logger.info(f"amp_id = {amp_id}")
             amp_info = self.amplifers[amp_id]   # 国产：amp_info表示ip，进口：amp_info表示串口号（形如：/dev/ttry00）
-            self.logger.info(f"amp_info = {amp_info}")
             worker = Process(    # 放大器：单进程设备
                 target=run_collector,
                 args=(amp_info, amp_id, SHM_NAME, self.stop_event, self.start_time,),
@@ -158,38 +155,9 @@ class Mirrors:
             self.Amplifiers[amp_id] = worker
             self.logger.info(f"Amplifiers[{amp_id}] is CONNECTED to {amp_info}")
     
-    # 未被调用
-    def _mask_blocked(self, path):
-        """处理屏蔽力促动器单元"""
-        try:
-            blocked = np.loadtxt(path, delimiter=',', comments='#', skiprows=1, dtype=int)
-        except OSError:
-            return      # 没有Blocked.csv文件
-        if blocked.size == 0:
-            return  # Blocked.csv文件为空记录
-        if blocked.ndim == 1:
-            blocked = blocked.reshape(1, -1)    # Blocked.csv文件中只有一行记录
-        if blocked.shape[1] != 2:
-            raise ValueError("Blocked.csv 格式错误, 应为两列: mirror_id, actuator_id")
-        rows, cols = blocked.T  #blocked[:, 0], blocked[:, 1]
-        self.Available[rows, cols] = False
-
+    
     @staticmethod
     def _load_hardware_config(filepath):
-        # try:
-        #     data = np.loadtxt(filepath, delimiter=',', dtype=str, skiprows=1, comments='#')
-        # except OSError:
-        #     return defaults.copy()
-        # if data.ndim == 1:                # 判断是否为一维数组          
-        #     data = data.reshape(1, -1)    # 重塑为 1 行，列数自动推断（-1 表示自动计算列数），2维
-        # loaded = data[:, col].tolist()  
-        # loaded = [s.strip() for s in loaded]  # s.strip()：去除s的首尾空字符；s.strip('#')：去除s的首尾'#'字符
-        # n = len(defaults)
-        # if len(loaded) < n:
-        #     loaded.extend(defaults[len(loaded):])
-        # elif len(loaded) > n:
-        #     loaded = loaded[:n]
-        # return loaded
         data = np.loadtxt(filepath, delimiter=',', dtype=str, skiprows=1, comments='#')
         dev_id = np.char.strip(data[:, 0]).astype(int)
         dev_ip = np.char.strip(data[:, 1])                  # 只去空格，不转类型
@@ -207,38 +175,44 @@ class Mirrors:
     async def run(self):
         try:
             while True:
-                 await asyncio.sleep(1)
-                 now_ts = time.time()
+                await asyncio.sleep(5.0)  # 每5秒钟执行一次闭环控制
+                now_ts = time.time()
                 
                 # # 获取传感器最新数据
-                 self.Force, self.Force_TS = self.get_force()
+                self.Force, self.Force_TS = self.get_force()
                 
-                 # # 全矩阵运算，效率不高，但意思清晰。如果要追求效率，可以先用条件卡住矩阵
-                 Error = Mirrors.Target - self.Force
-                 raw = Error * self.K_p
-                
+                 # 全矩阵运算，效率不高，但意思清晰。如果要追求效率，可以先用条件卡住矩阵
+                Error = Mirrors.Target - self.Force
+                raw = Error * self.K_p
+                 
                  # # 严格条件筛选
-                 valid_mask = (self.Available &
+                valid_mask = (self.Available &
                          ~np.isnan(self.Force) &
                          (Mirrors.Target>self.Force_limit_neg) &
                          (Mirrors.Target<self.Force_limit_pos) &
                          (self.Force_TS - now_ts < self.Force_timeout)
                  )
-                 need_move_mask = valid_mask & (np.abs(Error) > self.Threshold)
+                need_move_mask = valid_mask & (np.abs(Error) > self.Threshold)
                 
                  # # 转换成各促动器电机补偿步数
-                 self.Steps = np.where(need_move_mask, np.clip(raw, -self.steps_limit, self.steps_limit), 0.0)
+                self.Steps = np.where(need_move_mask, np.clip(raw, -self.steps_limit, self.steps_limit), 0.0)
 
                 
-                 with pd.option_context('display.max_rows', 6, 'display.max_columns', 25, 'display.precision', 2):
-                     self.logger.info(f"self.Force:\n{pd.DataFrame(self.Force)}\n")
-                     self.logger.info(f"raw_Steps:\n{pd.DataFrame(raw)}\n")
-                     self.logger.info(f"self.Steps:\n{pd.DataFrame(self.Steps)}\n")
+                #  with pd.option_context('display.max_rows', 6, 'display.max_columns', 25, 'display.precision', 2):
+                #      self.logger.info(f"Force:\n{pd.DataFrame(self.Force)}\n")
+                #      self.logger.info(f"ERROR:\n{pd.DataFrame(Error)}\n")
+                #      self.logger.info(f"raw_Steps:\n{pd.DataFrame(raw)}\n")
+                #      self.logger.info(f"Steps:\n{pd.DataFrame(self.Steps)}\n")
                     
                 # 控制电机运行
-                 cmds = self.build_motor_commands(self.Steps)
-                 print(f"CMDS= {cmds}")
-                 await self.execute_commands(cmds)
+                cmds = self.build_motor_commands(self.Steps)
+                await self.execute_commands(cmds)
+                with pd.option_context('display.max_rows', 6, 'display.max_columns', 25, 'display.precision', 2):
+                    self.logger.info(f"Force:\n{pd.DataFrame(self.Force)}\n")
+                    self.logger.info(f"ERROR:\n{pd.DataFrame(Error)}\n")
+                    self.logger.info(f"raw_Steps:\n{pd.DataFrame(raw)}\n")
+                    self.logger.info(f"Steps:\n{pd.DataFrame(self.Steps)}\n")
+                    self.logger.info(f"CMDS:\n{cmds}\n")
         except KeyboardInterrupt:
             pass
 
@@ -260,7 +234,7 @@ class Mirrors:
         tasks = []
         for ctrl_id, cmd in commands.items():
             tasks.append(asyncio.create_task(self.Controllers[ctrl_id].exec_command(cmd)))
-        await asyncio.wait_for(asyncio.gather(*tasks), timeout=3.2)
+        await asyncio.wait_for(asyncio.gather(*tasks), timeout=5)
 
 
 
