@@ -21,3 +21,38 @@ target_data = np.loadtxt(target_file, delimiter=',', dtype=str, skiprows=1, comm
 initial_target_force = np.char.strip(target_data[:, 1]).astype(float)
 Target = initial_target_force.reshape(6, 25)
 print(f"Target = {Target}, Target.shape = {Target.shape}")
+
+
+a = np.ones((6, 25))
+b = np.zeros((6, 25))
+
+steps_stack = np.stack([a, b])
+print(f"steps_stack = {steps_stack}, steps_stack.shape = {steps_stack.shape}")
+alwayes_nonzero_mask = np.all(steps_stack != 0)  # 检查每个位置在过去60秒内是否一直有非零步数(6x25: true表示一直有非零步数，false表示有过零步数)
+print(f"alwayes_nonzero_mask = {alwayes_nonzero_mask}, alwayes_nonzero_mask.shape = {alwayes_nonzero_mask.shape}")
+nonzero_positions = np.argwhere(alwayes_nonzero_mask)    # 获取一直有非零步数的位置索引
+print(f"nonzero_positions = {nonzero_positions}, nonzero_positions.shape = {nonzero_positions.shape}")
+
+
+
+data = np.array([[ [ 1,  2,  3],
+                   [ 4, -5,  6],
+                   [ 7,  8,  9],
+                   [1,  2, -3],
+                 ],
+                 [ [ 1,  2,  3],
+                   [ 4, -5,  6],
+                   [ -7,  8,  9],
+                   [1,  2, -3],
+                 ]
+                ])
+
+print(f"data = {data}\n, data.shape = {data.shape}")
+data1 = np.any(data > 0)  
+print(f"data1 = {data1}, data1.shape = {data1.shape}")
+
+data2 = np.any(data > 0, axis=0)
+print(f"data2 = \n{data2}\ndata2.shape = {data2.shape}")  
+
+data3 = np.any(data > 0, axis=1)
+print(f"data3 = \n{data3}\ndata3.shape = {data3.shape}")

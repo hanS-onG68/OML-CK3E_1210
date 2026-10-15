@@ -6,7 +6,7 @@ from PySide2.QtGui import *
 import pyqtgraph as pg
 from typing import List, Tuple
 import random  # 用于模拟传感器数据
-from mirror.mirror_control.mirror_controller import Mirrors
+from mirror.mirror_control.mirror_controller import MirrorsController
 from mirror.mirror_control.config import Actuator2Pon_Map
 
 # 设置pyqtgraph选项
@@ -18,9 +18,11 @@ class HexagonSensorVisualizer(QMainWindow):
         super().__init__()
         self.actuators_per_mirror = 25  #（中心镜不部署传感器,每个边缘子镜的传感器数量）
         self.mirror_count = 6           # 6个边缘子镜
-        self.mirror = Mirrors(is_domestic=True)       # 国产放大器
+        self.mirror = MirrorsController(is_domestic=True)       # 国产放大器
         self.sensor_data = self.mirror.Force          # 传感器数据
-        # self.sensor_idx = self.mirror._sensor_idx                
+        self.motor_status = self.mirror.motors_status # 电机的状态：true表示正常，false表示故障
+        self.change_val = self.mirror.change_va
+        self.close_future = None  # 用于在窗口关闭时触发的Future对象
         
         # 几何参数：对边距离2米
         self.flat_to_flat = 3.0                             # 对边距离
@@ -43,8 +45,6 @@ class HexagonSensorVisualizer(QMainWindow):
         self.threshold_slider = None
         self.threshold = 80
         self.threshold_label = None
-        # self.show_lines_check = None
-        # self.show_values_check = None
         
         # 性能优化：预创建对象池
         self.connection_lines = []
@@ -72,11 +72,23 @@ class HexagonSensorVisualizer(QMainWindow):
         # 保存初始视图范围
         self.save_initial_view_range()
 
+    def set_close_future(self, close_future):
+        """设置关闭窗口时的Future对象"""
+        self.close_future = close_future
+    def closeEvent(self, event):
+        """窗口关闭事件处理"""
+        if self.close_future and not self.close_future.done():
+            self.close_future.set_result(None)  # 设置Future对象的结果，通知外部事件循环
+        super().closeEvent(event)  # 接受关闭事件
+
     async def monitor_task(self):
         # 后台开启传感器数据处理流程
-        asyncio.create_task(self.mirror.run())
-        # asyncio.create_task(self.update_sensor_data())
-        asyncio.create_task(self.update_scatter())
+        # asyncio.create_task(self.mirror.run())
+        # asyncio.create_task(self.update_scatter())
+        await asyncio.gather(
+            self.mirror.run(),
+            self.update_scatter()
+        )
         
     def calculate_hexagon_centers(self):
         """计算7个六边形的中心位置 - 真正蜂巢紧密排列"""
@@ -193,7 +205,16 @@ class HexagonSensorVisualizer(QMainWindow):
             brush=pg.mkBrush(255, 255, 255, 180),
             pxMode=True
         )
+        # 创建散点图项（电机是否故障） # 性能优化：预创建散点图项对象池
+        self.scatter_plot_motor_status = pg.ScatterPlotItem(
+            pos=self.sensor_positions.reshape(-1, 2),  # 将二维数组展平为N x 2的形状
+            size=10,
+            pen=pg.mkPen(None),  # 无边框
+            brush=pg.mkBrush(0, 255, 0),  # 填充绿色
+            pxMode=True
+        )
         self.main_plot.addItem(self.scatter_plot)
+        self.main_plot.addItem(self.scatter_plot_motor_status)
         
         # 颜色条
         self.colorbar = self.create_colorbar()
@@ -561,17 +582,27 @@ class HexagonSensorVisualizer(QMainWindow):
     def initialize_scatter_textItem(self):
         """初始化传感器数值文本项"""
         self.current_text_items = np.empty((self.mirror_count, self.actuators_per_mirror), dtype=object)  # 用于显示传感器数值的文本项
+        self.current_change_val_text_items = np.empty((self.mirror_count, self.actuators_per_mirror), dtype=object)  # 用于显示差值的文本项
         sensor_positions = self.sensor_positions.reshape(-1, 2)  # 展平为150 x 2的形状
         for idx, (x, y) in enumerate(sensor_positions):
             i, j = idx // self.actuators_per_mirror, idx % self.actuators_per_mirror   # i表示镜子id, j表示传感器相对该子镜的编号, i*25+j就是传感器的物理位置，对应文件setting/Actuator_Mapping.csv中的actuator_id
             value = self.sensor_data[i, j]
             point = self.scatter_plot.points()[idx]
+            motor_status_point_data = self.scatter_plot_motor_status.data
+            motor_status_point_data['x'][idx] = x + 0.06
+            # motor_status_point_data['y'][idx] = y - 0.10
             if idx%25%2:  # 外圈点用方形，内圈点用圆形
                 point.setSymbol('s')
             text = pg.TextItem(f"{value:.1f}", anchor=(0.5, 0.5))
-            text.setPos(x, y - 0.12)
+            text.setPos(x, y - 0.10)
             text.setColor('#ffffff')
             text.setFont(QFont('Arial', 14))
+
+            change_val = self.change_val[i,j]
+            text_change_val = pg.TextItem(f"△={change_val:.1f}", anchor=(0.5, 0.5))
+            text_change_val.setPos(x, y+0.08)
+            text_change_val.setColor('#ffffff')
+            text_change_val.setFont(QFont('Arial', 8))
 
             phy_id = Actuator2Pon_Map[i+1][j]  # 促动器编号从1开始显示
             pos_flag = pg.TextItem(f"{phy_id}", anchor=(0.5, 0.5))
@@ -581,9 +612,12 @@ class HexagonSensorVisualizer(QMainWindow):
 
             self.main_plot.addItem(pos_flag)
             self.main_plot.addItem(text)
+            self.main_plot.addItem(text_change_val)
 
             self.current_text_items[i, j] = text
+            self.current_change_val_text_items[i, j] = text_change_val
         self.scatter_plot.update()
+        self.scatter_plot_motor_status.update()
     
     async def update_mirror_visibility(self):
         while True:
@@ -606,12 +640,17 @@ class HexagonSensorVisualizer(QMainWindow):
             self.update_mirror_statistics()
             self.scatter_plot.setPointsVisible(self.visible_mask.ravel().tolist())
             self.sensor_data = self.mirror.Force
+            self.motor_status = self.mirror.motors_status
+            self.change_val = self.mirror.change_va
             for (i, j), text_item in np.ndenumerate(self.current_text_items):
                 if not self.visible_mask[i, 0]:   # 当前的子镜是否可见
                     [item.setVisible(False) for item in self.current_text_items[i, :]]  # 隐藏该子镜的所有传感器文本项
                     continue
                 value = self.sensor_data[i, j]
                 text_item.setText(f"{value:.2f}")
+                change_val = self.change_val[i, j]
+                change_val_text = self.current_change_val_text_items[i, j]
+                change_val_text.setText(f"△={change_val:.2f}")
 
                 if np.isnan(value):
                     color = QColor(128, 128, 128)  # 灰色
@@ -626,7 +665,11 @@ class HexagonSensorVisualizer(QMainWindow):
                 visible = not (self.filter_enabled and value < self.threshold)
                 point.setVisible(visible)  # visible 为 True 时，该数据点会在界面上正常显示
                 text_item.setVisible(visible)
+                motor_status_point = self.scatter_plot_motor_status.points()[i * self.actuators_per_mirror + j]
+                motor_color = QColor(0, 255, 0) if self.motor_status[i,j]  else QColor(255, 0, 0) # 红色(255,0,0): 故障， 绿色：正常
+                motor_status_point.setBrush(motor_color)
             self.scatter_plot.update()
+            self.scatter_plot_motor_status.update()
             await asyncio.sleep(0.1)  # 0.2秒更新一次
     
     def update_global_statistics(self):
@@ -836,8 +879,8 @@ class HexagonSensorVisualizer(QMainWindow):
                 if cb.isChecked():
                     act_global_index = group['start_idx'] + i  # 0-based
                     selected_actuators.append(act_global_index)
-                    Mirrors.Target[group["mirror_idx"]][i] = float(target_force) if grid_row == 0 else (Mirrors.Target[group["mirror_idx"]][i] + float(increment_force))
-                    print(f"子镜{group['mirror_idx']+1} 促动器{act_global_index} 设置目标力: {Mirrors.Target[group['mirror_idx']][i]} N")
+                    MirrorsController.Target[group["mirror_idx"]][i] = float(target_force) if grid_row == 0 else (MirrorsController.Target[group["mirror_idx"]][i] + float(increment_force))
+                    print(f"子镜{group['mirror_idx']+1} 促动器{act_global_index} 设置目标力: {MirrorsController.Target[group['mirror_idx']][i]} N")
         if not selected_actuators:
             QMessageBox.information(dialog, "提示", "未选择任何促动器")
             return
@@ -860,23 +903,42 @@ def palette_set():
     app.setPalette(palette)
 
 if __name__ == "__main__":
-    import asyncio
+    import asyncio, traceback
     try:
         from qasync import QEventLoop, asyncSlot
         # ★★★ 在创建 QApplication 之前设置 ★★★
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
         app = QApplication(sys.argv)
+        app.setQuitOnLastWindowClosed(False)      #关键：关窗不自动停 loop
         with QEventLoop(app) as loop:
             asyncio.set_event_loop(loop)
             palette_set()
             window = HexagonSensorVisualizer()
-            # window.showMaximized()   # 直接最大化
             window.show()
-            loop.create_task(window.monitor_task())
-            loop.run_forever()
-    except Exception as e:
-        import traceback
-        traceback.print_exc()            # 打印完整堆栈
-        print(f"出现异常, e = {str(e)}")
+            async def main():
+                close_future = asyncio.get_running_loop().create_future()
+                window.set_close_future(close_future)
+                monitor_task = asyncio.create_task(window.monitor_task())
+                try:
+                    await close_future     # 关窗时唤醒
+                except Exception as e:
+                    traceback.print_exc()  # 打印完整堆栈
+                    print(f"出现异常, e = {str(e)}")
+                finally:
+                    monitor_task.cancel()
+                    await asyncio.gather(monitor_task, return_exceptions=True)
+                    try:
+                        await window.mirror.close()
+                    except Exception as e:
+                        traceback.print_exc()  # 打印完整堆栈
+                        print(f"出现异常, e = {str(e)}")
+            try:
+                loop.run_until_complete(main())
+            except KeyboardInterrupt:
+                print(f"用户中断程序")
+    except Exception:
+        traceback.print_exc()
+    finally:
+        pass
         

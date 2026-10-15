@@ -31,7 +31,7 @@ class PMAC_Controller:
             "ActPos":   "Motor[{axis}].ActPos",
             "DesPos":   "Motor[{axis}].DesPos",
             "HomePos":  "Motor[{axis}].HomePos",
-    }   
+    }  
 
 
     def __init__(self, ssh_config: Optional[SSH_Config]):

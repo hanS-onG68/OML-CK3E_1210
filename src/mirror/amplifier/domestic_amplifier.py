@@ -185,10 +185,10 @@ if __name__ == "__main__":
                 print("✅ 已自动关闭所有目标连接进程")
             except subprocess.CalledProcessError:
                 # 如果没有匹配进程，忽略错误即可
-                print("ℹ️ 未找到目标进程，无需关闭")
+                print("⚠️ 未找到目标进程，无需关闭")
     
     params = {
-        "host":     "192.168.0.104" ,    # 设备IP
+        "host":     "192.168.0.104" ,   # 设备IP
         "port":     502,                # Modbus TCP端口，默认502
         "timeout":  3,                  # 连接/响应超时(秒)
         "retries":  3,                  # 重试次数

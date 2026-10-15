@@ -21,15 +21,20 @@ from mirror.mirror_control.config import (
 from mirror.pmac_controller import PMAC_Controller, SSH_Config
 from mirror.mirror_control.sensor_collector import collector
 from mirror.mirror_control.utils import OCS_Logger
+from collections import deque
 
 
-class Mirrors:
+class MirrorsController:
     """子镜面形闭环控制类"""
     Target:Optional[np.ndarray] = None       # 力维持目标值，由上层提供(主动光学/查表)
     def __init__(self, debug=False, is_domestic:bool = True):
         self.debug = debug
         self.logger = OCS_Logger(name="MIRRORS", debug=self.debug)
         self.is_domestic = is_domestic       # 区分是国产的放大器还是进口的放大器，True表示国产，False表示进口
+        self._cmds_history = deque()  # 存储（timestamp，is_empty）
+        self._cmds_window = 60.0      # 60秒的时间窗口
+        self._empty_cmds_detected = False
+        self._motors_status_history = deque()  # 存储（timestamp)
 
         # 控制标签
         self.stop_event = Event()
@@ -39,7 +44,7 @@ class Mirrors:
         target_file = resources.files("mirror.mirror_control").joinpath("settings/Initial_Target.csv") 
         target_data = np.loadtxt(target_file, delimiter=',', dtype=str, skiprows=1, comments='#')
         initial_target_force = np.char.strip(target_data[:, 1]).astype(float)
-        Mirrors.Target = initial_target_force.reshape(MIRRORS_COUNT, ACTUATORS_PER_MIRROR)    # 物理位置的力维持目标值，由上层提供(主动光学/查表)
+        MirrorsController.Target = initial_target_force.reshape(MIRRORS_COUNT, ACTUATORS_PER_MIRROR)    # 物理位置的力维持目标值，由上层提供(主动光学/查表)
         self.Force = np.zeros((MIRRORS_COUNT, ACTUATORS_PER_MIRROR))        # 力传感器数据
         self.Force_TS = np.zeros((MIRRORS_COUNT, ACTUATORS_PER_MIRROR))     # 力传感器时间戳
         self.Error = np.zeros((MIRRORS_COUNT, ACTUATORS_PER_MIRROR))        # 目标值与实际值之间的偏差
@@ -49,17 +54,22 @@ class Mirrors:
 
         threshold_file = resources.files("mirror.mirror_control").joinpath("settings/Threshold.csv")
         self.Threshold = np.loadtxt(threshold_file, delimiter=',', skiprows=1)              # 阈值：对应位置的传感器不超过该位置的阈值时，不需要动
-        self.Force_limit_pos = np.ones((MIRRORS_COUNT, ACTUATORS_PER_MIRROR))*100.0         # 力值上限
-        self.Force_limit_neg = np.ones((MIRRORS_COUNT, ACTUATORS_PER_MIRROR))*-100.0        # 力值下限
+
+        cols = np.arange(25).reshape(1, -1)
+        multiplier = np.where((cols % 2 == 0) & (cols != 0), 100.0, 20.0)   # 内圈100(偶数列)，外圈20(奇数列)，第0列为20(奇数列)
+        self.Force_limit_pos = np.ones((MIRRORS_COUNT, ACTUATORS_PER_MIRROR)) * multiplier         # 力值上限
+        self.Force_limit_neg = -np.ones((MIRRORS_COUNT, ACTUATORS_PER_MIRROR))* multiplier         # 力值下限
         self.Force_timeout = FORCE_TIMEOUT
 
-        self.Steps = np.zeros_like(Mirrors.Target)
+        self.Steps = np.zeros_like(MirrorsController.Target)
         self.steps_limit = MOTOR_STEPS_LIMIT
 
         self.Available = np.full((MIRRORS_COUNT, ACTUATORS_PER_MIRROR), False, dtype=bool)  # 该位置是否可用
 
+        self.motors_status = np.full((MIRRORS_COUNT, ACTUATORS_PER_MIRROR), True, dtype=bool)  # 该位置电机是否正常: true表示正常，false表示异常(默认都正常)
+        
         # 调试时选择：
-        self.Available[0, :] = True    # 选择几号边缘子镜
+        self.Available[1, :] = True    # 选择几号边缘子镜
 
 
         # 映射索引
@@ -82,6 +92,8 @@ class Mirrors:
 
         # 传感器
         self._create_amplifiers()
+
+        self.change_va = self.Force - MirrorsController.Target  # 当前值和目标值的差值
 
     async def close(self):
         if self.stop_event and not self.stop_event.is_set():
@@ -119,16 +131,10 @@ class Mirrors:
 
     def _create_controllers(self):
         ip_file = resources.files("mirror.mirror_control").joinpath("settings/Controller_IP.csv")
-        # self.controller_ips = self._load_hardware_config(ip_file, col=1, defaults=DEFAULT_CTRL_IPS)
         self.controller_ips = self._load_hardware_config(ip_file)
-        print(f"controller_ips = {self.controller_ips}")
         self.Controllers = dict()
         for ctrl_id in np.unique(self.controller_id[self.Available.ravel()]):
-            print(f"ctrl_id = {ctrl_id}")
-            # if ctrl_id != 1:  # 临时调试
-            #     continue
             ctrl_ip = self.controller_ips[ctrl_id]
-            print(f"ctrl_ip = {ctrl_ip}")
             config = SSH_Config(ctrl_ip)
             controller = PMAC_Controller(config)
             asyncio.get_event_loop().create_task(controller.connect())
@@ -140,11 +146,9 @@ class Mirrors:
             asyncio.run(collector(amp_info, amp_id, shm_name, stop_event, start_time, interval=1.0, data_rate=1.0, debug=debug, is_domestic=is_domestic))
         amp_file = resources.files("mirror.mirror_control").joinpath("settings/Domestic_Amplifier_Mapping.csv") if self.is_domestic else resources.files("mirror.mirror_control").joinpath("settings/Imported_Amplifier_Mapping.csv")
         self.amplifers = self._load_hardware_config(amp_file)
-        self.logger.info(f"amplifers = {self.amplifers}")
         self.start_time = time.monotonic()
         self.Amplifiers = dict()
         for amp_id in np.unique(self.amplifer_id[self.Available.ravel()]):
-            # self.logger.info(f"amp_id = {amp_id}")
             amp_info = self.amplifers[amp_id]   # 国产：amp_info表示ip，进口：amp_info表示串口号（形如：/dev/ttry00）
             worker = Process(    # 放大器：单进程设备
                 target=run_collector,
@@ -170,6 +174,7 @@ class Mirrors:
         """获取最新力传感器数据和时间戳 -- 花式索引, 一次拷贝, 1.17us"""
         self.Force = self._data[self._sensor_idx].reshape(MIRRORS_COUNT, ACTUATORS_PER_MIRROR)
         self.Force_TS = self._timestamp[self._sensor_idx].reshape(MIRRORS_COUNT, ACTUATORS_PER_MIRROR)
+        self.change_va = self.Force - MirrorsController.Target  # 当前值和目标值的差值
         return self.Force, self.Force_TS
 
     async def run(self):
@@ -177,36 +182,34 @@ class Mirrors:
             while True:
                 await asyncio.sleep(5.0)  # 每5秒钟执行一次闭环控制
                 now_ts = time.time()
-                
+
+                # 每一个小时刷新一下motor的状态，避免长时间运行后出现异常
+                self.reset_motor_status(now_ts)
+
                 # # 获取传感器最新数据
                 self.Force, self.Force_TS = self.get_force()
                 
                  # 全矩阵运算，效率不高，但意思清晰。如果要追求效率，可以先用条件卡住矩阵
-                Error = Mirrors.Target - self.Force
+                Error = MirrorsController.Target - self.Force
                 raw = Error * self.K_p
                  
                  # # 严格条件筛选
-                valid_mask = (self.Available &
+                valid_mask = (self.Available & self.motors_status &
                          ~np.isnan(self.Force) &
-                         (Mirrors.Target>self.Force_limit_neg) &
-                         (Mirrors.Target<self.Force_limit_pos) &
+                         (MirrorsController.Target>self.Force_limit_neg) &
+                         (MirrorsController.Target<self.Force_limit_pos) &
                          (self.Force_TS - now_ts < self.Force_timeout)
                  )
                 need_move_mask = valid_mask & (np.abs(Error) > self.Threshold)
                 
                  # # 转换成各促动器电机补偿步数
                 self.Steps = np.where(need_move_mask, np.clip(raw, -self.steps_limit, self.steps_limit), 0.0)
-
-                
-                #  with pd.option_context('display.max_rows', 6, 'display.max_columns', 25, 'display.precision', 2):
-                #      self.logger.info(f"Force:\n{pd.DataFrame(self.Force)}\n")
-                #      self.logger.info(f"ERROR:\n{pd.DataFrame(Error)}\n")
-                #      self.logger.info(f"raw_Steps:\n{pd.DataFrame(raw)}\n")
-                #      self.logger.info(f"Steps:\n{pd.DataFrame(self.Steps)}\n")
                     
-                # 控制电机运行
-                cmds = self.build_motor_commands(self.Steps)
-                await self.execute_commands(cmds)
+                cmds = self.build_motor_commands(self.Steps)  # 获取各个电机需要执行的命令
+
+                self.check_motors_status(now_ts, cmds)  # 检查电机状态，记录历史命令
+                # if cmds:
+                    # await self.execute_commands(cmds)  # 控制电机运行
                 with pd.option_context('display.max_rows', 6, 'display.max_columns', 25, 'display.precision', 2):
                     self.logger.info(f"Force:\n{pd.DataFrame(self.Force)}\n")
                     self.logger.info(f"ERROR:\n{pd.DataFrame(Error)}\n")
@@ -216,7 +219,7 @@ class Mirrors:
         except KeyboardInterrupt:
             pass
 
-    def build_motor_commands(self, steps):
+    def build_motor_commands(self):
         commands = dict()
         for ctrl_id in range(MIRRORS_COUNT):
             non_pos = np.nonzero(self.Steps[ctrl_id])[0]  # 返回当前子镜中step不为0的索引 
@@ -236,10 +239,43 @@ class Mirrors:
             tasks.append(asyncio.create_task(self.Controllers[ctrl_id].exec_command(cmd)))
         await asyncio.wait_for(asyncio.gather(*tasks), timeout=5)
 
+    async def check_motors_status(self, now_ts, cmds):
+        self._cmds_history.append((now_ts, cmds, self.Steps.copy()))     # 记录当前时间戳和是否有命令
+        
+        # 移除过期的历史记录
+        while self._cmds_history and self._cmds_history[0][0] < now_ts - self._cmds_window:
+            self._cmds_history.popleft()
+                        
+        empty_cmds_records = [ts for ts, cmds, _ in self._cmds_history if len(cmds) == 0]  # 记录过去60秒内没有电机命令的时间戳
+        if empty_cmds_records:
+            self._empty_cmds_detected = True
+            self.logger.info(f"检测到过去{self._cmds_window}秒内有{len(empty_cmds_records)}次无电机命令的情况: 电机无异常!")
+        else:
+            steps_stack = np.stack([steps for ts, cmds, steps in self._cmds_history], axis=0)
+            alwayes_nonzero_mask = np.all(steps_stack != 0, axis=0)  # 检查每个位置在过去60秒内是否一直有非零步数(6x25: true表示一直有非零步数，false表示有过零步数)
+            nonzero_positions = np.argwhere(alwayes_nonzero_mask)    # 获取一直有非零步数的位置索引
+            for ctrl_id, actuator_id in nonzero_positions:
+                motor_id = self._axis_idx[ctrl_id, actuator_id]
+                self.logger.error(f"❌️检测到过去{self._cmds_window}秒内, 位置(子镜{ctrl_id}, 促动器{actuator_id})一直有非零步数, 可能电机异常!")
+                if self.Controllers[ctrl_id] and self.Controllers[ctrl_id].is_connected():
+                    self.Controllers[ctrl_id].exec_command(f"#{motor_id}k")  # 该位置电机去使能
+                self.motors_status[ctrl_id, actuator_id] = False             # 标记该位置电机异常
+
+    async def reset_motor_status(self, now_ts):
+        if not self._motors_status_history:
+            self._motors_status_history.append(now_ts)
+            return
+        if self._motors_status_history and now_ts - self._motors_status_history[-1] < 3600:  # 每隔一小时检查一次电机状态
+            return
+        self.motors_status.fill(True)  # 重置电机状态为正常
+        self._motors_status_history.popleft()
+        self._motors_status_history.append(now_ts)
+        self.logger.info(f"✅️电机状态已重置为正常, 时间戳: {now_ts}")
+        
 
 
 if __name__ == "__main__":
-    mirrors = Mirrors(is_domestic=False)
+    mirrors = MirrorsController(is_domestic=False)
     def _atexit_cleanup():
         asyncio.run(mirrors.close())
     atexit.register(_atexit_cleanup)

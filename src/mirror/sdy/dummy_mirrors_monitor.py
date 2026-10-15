@@ -6,7 +6,7 @@ from PySide2.QtGui import *
 import pyqtgraph as pg
 from typing import List, Tuple
 import random  # 用于模拟传感器数据
-#from mirrors import Mirrors
+#from mirrors import MirrorsController
 
 # 设置pyqtgraph选项
 pg.setConfigOptions(antialias=True, useOpenGL=True)  # 启用OpenGL加速
