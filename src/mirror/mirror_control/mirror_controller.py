@@ -33,7 +33,6 @@ class MirrorsController:
         self.is_domestic = is_domestic       # 区分是国产的放大器还是进口的放大器，True表示国产，False表示进口
         self._cmds_history = deque()  # 存储（timestamp，is_empty）
         self._cmds_window = 60.0      # 60秒的时间窗口
-        self._empty_cmds_detected = False
         self._motors_status_history = deque()  # 存储（timestamp)
 
         # 控制标签
@@ -95,7 +94,16 @@ class MirrorsController:
 
         self.change_va = self.Force - MirrorsController.Target  # 当前值和目标值的差值
 
+    async def disable_all_motor(self):
+        enable_motors = np.argwhere(self.motors_status)
+        for motor_id in enable_motors:
+            ctrl_id, actuator_id = motor_id
+            motor_id = self._axis_idx[ctrl_id, actuator_id]
+            if self.Controllers[ctrl_id] and self.Controllers[ctrl_id].is_connected:
+                await self.Controllers[ctrl_id].exec_command(f"#{motor_id}k")  # 该位置电机去使能
+        
     async def close(self):
+        # await self.disable_all_motor()  # 所有可用的电机去使能
         if self.stop_event and not self.stop_event.is_set():
             self.stop_event.set()       # 发信号，让采集子进程自己停止
         for worker in self.Amplifiers.values():
@@ -184,7 +192,7 @@ class MirrorsController:
                 now_ts = time.time()
 
                 # 每一个小时刷新一下motor的状态，避免长时间运行后出现异常
-                self.reset_motor_status(now_ts)
+                await self.reset_motor_status(now_ts)
 
                 # # 获取传感器最新数据
                 self.Force, self.Force_TS = self.get_force()
@@ -205,11 +213,12 @@ class MirrorsController:
                  # # 转换成各促动器电机补偿步数
                 self.Steps = np.where(need_move_mask, np.clip(raw, -self.steps_limit, self.steps_limit), 0.0)
                     
-                cmds = self.build_motor_commands(self.Steps)  # 获取各个电机需要执行的命令
+                cmds = self.build_motor_commands()  # 获取各个电机需要执行的命令
 
-                self.check_motors_status(now_ts, cmds)  # 检查电机状态，记录历史命令
-                # if cmds:
-                    # await self.execute_commands(cmds)  # 控制电机运行
+                await self.check_motors_status(now_ts, cmds)  # 检查电机状态，记录历史命令
+                
+                if cmds:
+                    await self.execute_commands(cmds)  # 控制电机运行
                 with pd.option_context('display.max_rows', 6, 'display.max_columns', 25, 'display.precision', 2):
                     self.logger.info(f"Force:\n{pd.DataFrame(self.Force)}\n")
                     self.logger.info(f"ERROR:\n{pd.DataFrame(Error)}\n")
@@ -241,6 +250,9 @@ class MirrorsController:
 
     async def check_motors_status(self, now_ts, cmds):
         self._cmds_history.append((now_ts, cmds, self.Steps.copy()))     # 记录当前时间戳和是否有命令
+
+        if now_ts - self._cmds_history[0][0] < self._cmds_window:  # 每隔一分钟检查一次
+            return
         
         # 移除过期的历史记录
         while self._cmds_history and self._cmds_history[0][0] < now_ts - self._cmds_window:
@@ -248,7 +260,6 @@ class MirrorsController:
                         
         empty_cmds_records = [ts for ts, cmds, _ in self._cmds_history if len(cmds) == 0]  # 记录过去60秒内没有电机命令的时间戳
         if empty_cmds_records:
-            self._empty_cmds_detected = True
             self.logger.info(f"检测到过去{self._cmds_window}秒内有{len(empty_cmds_records)}次无电机命令的情况: 电机无异常!")
         else:
             steps_stack = np.stack([steps for ts, cmds, steps in self._cmds_history], axis=0)
@@ -256,16 +267,16 @@ class MirrorsController:
             nonzero_positions = np.argwhere(alwayes_nonzero_mask)    # 获取一直有非零步数的位置索引
             for ctrl_id, actuator_id in nonzero_positions:
                 motor_id = self._axis_idx[ctrl_id, actuator_id]
-                self.logger.error(f"❌️检测到过去{self._cmds_window}秒内, 位置(子镜{ctrl_id}, 促动器{actuator_id})一直有非零步数, 可能电机异常!")
-                if self.Controllers[ctrl_id] and self.Controllers[ctrl_id].is_connected():
-                    self.Controllers[ctrl_id].exec_command(f"#{motor_id}k")  # 该位置电机去使能
-                self.motors_status[ctrl_id, actuator_id] = False             # 标记该位置电机异常
+                self.logger.error(f"❌️检测到过去{self._cmds_window}秒内, 位置(子镜{ctrl_id}-促动器{actuator_id}-电机{motor_id})一直有非零步数, 可能电机异常!")
+                if self.Controllers[ctrl_id] and self.Controllers[ctrl_id].is_connected:
+                    await self.Controllers[ctrl_id].exec_command(f"#{motor_id}k")  # 该位置电机去使能
+                self.motors_status[ctrl_id, actuator_id] = False                   # 标记该位置电机异常
 
     async def reset_motor_status(self, now_ts):
         if not self._motors_status_history:
             self._motors_status_history.append(now_ts)
             return
-        if self._motors_status_history and now_ts - self._motors_status_history[-1] < 3600:  # 每隔一小时检查一次电机状态
+        if now_ts - self._motors_status_history[-1] < self._cmds_window * 60:  # 每隔一小时检查一次电机状态
             return
         self.motors_status.fill(True)  # 重置电机状态为正常
         self._motors_status_history.popleft()

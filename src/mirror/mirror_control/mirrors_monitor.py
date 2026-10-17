@@ -1,4 +1,4 @@
-import sys, atexit
+import sys, atexit, asyncio, traceback,signal
 import numpy as np
 from PySide2.QtWidgets import *
 from PySide2.QtCore import *
@@ -85,11 +85,15 @@ class HexagonSensorVisualizer(QMainWindow):
         # 后台开启传感器数据处理流程
         # asyncio.create_task(self.mirror.run())
         # asyncio.create_task(self.update_scatter())
-        await asyncio.gather(
-            self.mirror.run(),
-            self.update_scatter()
-        )
-        
+        try:
+            await asyncio.gather(
+                self.mirror.run(),
+                self.update_scatter()
+            )
+        except Exception as e:
+            print(f"出现异常：{str(e)}")
+            traceback.print_exc()  
+
     def calculate_hexagon_centers(self):
         """计算7个六边形的中心位置 - 真正蜂巢紧密排列"""
         # 中心六边形
@@ -639,12 +643,14 @@ class HexagonSensorVisualizer(QMainWindow):
             self.update_global_statistics()
             self.update_mirror_statistics()
             self.scatter_plot.setPointsVisible(self.visible_mask.ravel().tolist())
+            self.scatter_plot_motor_status.setPointsVisible(self.visible_mask.ravel().tolist())
             self.sensor_data = self.mirror.Force
             self.motor_status = self.mirror.motors_status
             self.change_val = self.mirror.change_va
             for (i, j), text_item in np.ndenumerate(self.current_text_items):
                 if not self.visible_mask[i, 0]:   # 当前的子镜是否可见
                     [item.setVisible(False) for item in self.current_text_items[i, :]]  # 隐藏该子镜的所有传感器文本项
+                    [item.setVisible(False) for item in self.current_change_val_text_items[i, :]]  # 隐藏该子镜的所有传感器文本项
                     continue
                 value = self.sensor_data[i, j]
                 text_item.setText(f"{value:.2f}")
@@ -662,12 +668,15 @@ class HexagonSensorVisualizer(QMainWindow):
                     color = self.current_colormap.mapToQColor(normalized)
                 point = self.scatter_plot.points()[i * self.actuators_per_mirror + j]
                 point.setBrush(color)
-                visible = not (self.filter_enabled and value < self.threshold)
-                point.setVisible(visible)  # visible 为 True 时，该数据点会在界面上正常显示
-                text_item.setVisible(visible)
                 motor_status_point = self.scatter_plot_motor_status.points()[i * self.actuators_per_mirror + j]
                 motor_color = QColor(0, 255, 0) if self.motor_status[i,j]  else QColor(255, 0, 0) # 红色(255,0,0): 故障， 绿色：正常
                 motor_status_point.setBrush(motor_color)
+                
+                visible = not (self.filter_enabled and value < self.threshold)
+                point.setVisible(visible)  # visible 为 True 时，该数据点会在界面上正常显示
+                text_item.setVisible(visible)
+                change_val_text.setVisible(visible)
+                motor_status_point.setVisible(visible)
             self.scatter_plot.update()
             self.scatter_plot_motor_status.update()
             await asyncio.sleep(0.1)  # 0.2秒更新一次
@@ -903,7 +912,6 @@ def palette_set():
     app.setPalette(palette)
 
 if __name__ == "__main__":
-    import asyncio, traceback
     try:
         from qasync import QEventLoop, asyncSlot
         # ★★★ 在创建 QApplication 之前设置 ★★★
@@ -918,6 +926,13 @@ if __name__ == "__main__":
             window.show()
             async def main():
                 close_future = asyncio.get_running_loop().create_future()
+                def on_sigint():
+                    if not close_future.done():
+                        close_future.set_result(None)
+                try:
+                    loop.add_signal_handler(signal.SIGINT, on_sigint)
+                except (NotImplementedError, RuntimeError):
+                    pass    # Windows 等平台不支持，退回到 KeyboardInterrupt
                 window.set_close_future(close_future)
                 monitor_task = asyncio.create_task(window.monitor_task())
                 try:
@@ -928,6 +943,7 @@ if __name__ == "__main__":
                 finally:
                     monitor_task.cancel()
                     await asyncio.gather(monitor_task, return_exceptions=True)
+                    print(f"monitor_task is cancelled?: {monitor_task.cancelled()}")
                     try:
                         await window.mirror.close()
                     except Exception as e:
