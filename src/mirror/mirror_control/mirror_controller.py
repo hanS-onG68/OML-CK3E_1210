@@ -95,15 +95,16 @@ class MirrorsController:
         self.change_va = self.Force - MirrorsController.Target  # 当前值和目标值的差值
 
     async def disable_all_motor(self):
-        enable_motors = np.argwhere(self.motors_status)
-        for motor_id in enable_motors:
-            ctrl_id, actuator_id = motor_id
+        enable_actuators = np.argwhere(self.motors_status)
+        for actuator_info in enable_actuators:
+            ctrl_id, actuator_id = actuator_info
             motor_id = self._axis_idx[ctrl_id, actuator_id]
-            if self.Controllers[ctrl_id] and self.Controllers[ctrl_id].is_connected:
+            if ctrl_id in self.Controllers and self.Controllers[ctrl_id] and self.Controllers[ctrl_id].is_connected:
                 await self.Controllers[ctrl_id].exec_command(f"#{motor_id}k")  # 该位置电机去使能
+        self.logger.info(f"[资源清理阶段]所有电机完成去使能")
         
     async def close(self):
-        # await self.disable_all_motor()  # 所有可用的电机去使能
+        await self.disable_all_motor()  # 所有可用的电机去使能
         if self.stop_event and not self.stop_event.is_set():
             self.stop_event.set()       # 发信号，让采集子进程自己停止
         for worker in self.Amplifiers.values():
